@@ -1,12 +1,14 @@
 package com.example.moviebox.ui.screens.search
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.moviebox.data.remote.dto.GenreDto
+import com.example.moviebox.data.remote.dto.GameDto
 import com.example.moviebox.data.remote.dto.MovieDto
 import com.example.moviebox.data.remote.dto.PersonCreditDto
 import com.example.moviebox.data.remote.dto.PersonDto
 import com.example.moviebox.data.remote.dto.TvShowDto
+import com.example.moviebox.data.repository.GameRepository
 import com.example.moviebox.data.repository.MovieRepository
 import com.example.moviebox.data.repository.TvShowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,14 +17,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class SearchFilter { TITLE, PERSON, GENRE }
-enum class MediaTypeFilter { MOVIES, TV_SHOWS }
+enum class SearchFilter { TITLE, PERSON }
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val movieRepository: MovieRepository,
-    private val tvShowRepository: TvShowRepository
+    private val tvShowRepository: TvShowRepository,
+    private val gameRepository: GameRepository,
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    // "movie", "tv" o "game" — determina qué se busca
+    val mediaType: String = savedStateHandle["mediaType"] ?: "movie"
 
     private val _uiState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val uiState: StateFlow<SearchUiState> = _uiState
@@ -33,34 +39,13 @@ class SearchViewModel @Inject constructor(
     private val _filter = MutableStateFlow(SearchFilter.TITLE)
     val filter: StateFlow<SearchFilter> = _filter
 
-    private val _mediaTypeFilter = MutableStateFlow(MediaTypeFilter.MOVIES)
-    val mediaTypeFilter: StateFlow<MediaTypeFilter> = _mediaTypeFilter
-
-    private val _genres = MutableStateFlow<List<GenreDto>>(emptyList())
-    val genres: StateFlow<List<GenreDto>> = _genres
-
-    private val apiKey = "3ec3dbb22f2043fa67e0ddf84266ad61"
+    private val tmdbApiKey = "3ec3dbb22f2043fa67e0ddf84266ad61"
+    private val rawgApiKey = "3391dac64bae44c1bed7a142c6008538"
 
     fun onFilterChange(newFilter: SearchFilter) {
         _filter.value = newFilter
         _uiState.value = SearchUiState.Idle
         _query.value = ""
-        if (newFilter == SearchFilter.GENRE) loadGenresForCurrentType()
-    }
-
-    fun onMediaTypeChange(type: MediaTypeFilter) {
-        _mediaTypeFilter.value = type
-        if (_filter.value == SearchFilter.GENRE) loadGenresForCurrentType()
-    }
-
-    private fun loadGenresForCurrentType() {
-        viewModelScope.launch {
-            val result = when (_mediaTypeFilter.value) {
-                MediaTypeFilter.MOVIES -> movieRepository.getMovieGenres(apiKey)
-                MediaTypeFilter.TV_SHOWS -> tvShowRepository.getTvShowGenres(apiKey)
-            }
-            _genres.value = result.getOrDefault(emptyList()).sortedBy { it.name }
-        }
     }
 
     fun onQueryChange(newQuery: String) {
@@ -68,34 +53,15 @@ class SearchViewModel @Inject constructor(
         if (newQuery.length >= 2) search(newQuery) else _uiState.value = SearchUiState.Idle
     }
 
-    fun onGenreSelected(genre: GenreDto) {
-        viewModelScope.launch {
-            _uiState.value = SearchUiState.Loading
-            try {
-                when (_mediaTypeFilter.value) {
-                    MediaTypeFilter.MOVIES -> {
-                        val movies = movieRepository.discoverMoviesByGenre(apiKey, genre.id).getOrDefault(emptyList())
-                        _uiState.value = SearchUiState.GenreMovieResults(label = genre.name, movies = movies)
-                    }
-                    MediaTypeFilter.TV_SHOWS -> {
-                        val tvShows = tvShowRepository.discoverTvShowsByGenre(apiKey, genre.id).getOrDefault(emptyList())
-                        _uiState.value = SearchUiState.GenreTvShowResults(label = genre.name, tvShows = tvShows)
-                    }
-                }
-            } catch (e: Exception) {
-                _uiState.value = SearchUiState.Error(e.message ?: "Error desconocido")
-            }
-        }
-    }
-
     fun onPersonSelected(person: PersonDto) {
         viewModelScope.launch {
             _uiState.value = SearchUiState.Loading
             try {
-                val result = movieRepository.getPersonCombinedCredits(apiKey, person.id)
+                val result = movieRepository.getPersonCombinedCredits(tmdbApiKey, person.id)
                 if (result.isSuccess) {
                     val credits = result.getOrThrow()
 
+                    // Filtrar según mediaType
                     val actedMovies = credits.cast.filter { it.mediaType == "movie" && it.posterPath != null }
                         .sortedByDescending { it.popularity }.distinctBy { it.id }
                     val actedTv = credits.cast.filter { it.mediaType == "tv" && it.posterPath != null }
@@ -105,12 +71,24 @@ class SearchViewModel @Inject constructor(
                     val directedTv = credits.crew.filter { it.job == "Director" && it.mediaType == "tv" && it.posterPath != null }
                         .sortedByDescending { it.popularity }.distinctBy { it.id }
 
+                    // Si estamos en pestaña películas, mostrar solo pelis; si series, solo series
+                    val filteredActed = when (mediaType) {
+                        "movie" -> actedMovies
+                        "tv" -> actedTv
+                        else -> actedMovies + actedTv
+                    }
+                    val filteredDirected = when (mediaType) {
+                        "movie" -> directedMovies
+                        "tv" -> directedTv
+                        else -> directedMovies + directedTv
+                    }
+
                     _uiState.value = SearchUiState.PersonDetail(
                         person = person,
-                        actedMovies = actedMovies,
-                        actedTvShows = actedTv,
-                        directedMovies = directedMovies,
-                        directedTvShows = directedTv
+                        actedMovies = if (mediaType != "tv") actedMovies else emptyList(),
+                        actedTvShows = if (mediaType != "movie") actedTv else emptyList(),
+                        directedMovies = if (mediaType != "tv") directedMovies else emptyList(),
+                        directedTvShows = if (mediaType != "movie") directedTv else emptyList()
                     )
                 } else {
                     _uiState.value = SearchUiState.Error("Error al cargar filmografía")
@@ -121,7 +99,6 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    // Expandir una categoría para ver todas
     fun onExpandCategory(category: FilmCategory) {
         val current = _uiState.value
         if (current is SearchUiState.PersonDetail) {
@@ -134,7 +111,6 @@ class SearchViewModel @Inject constructor(
                     FilmCategory.DIRECTED_MOVIES -> current.directedMovies
                     FilmCategory.DIRECTED_TV -> current.directedTvShows
                 },
-                // Guardar estado anterior para poder volver
                 previousState = current
             )
         }
@@ -153,15 +129,25 @@ class SearchViewModel @Inject constructor(
             try {
                 when (_filter.value) {
                     SearchFilter.TITLE -> {
-                        val movies = movieRepository.searchMoviesFromApi(apiKey, query).getOrDefault(emptyList()).take(5)
-                        val tvShows = tvShowRepository.searchTvShowsFromApi(apiKey, query).getOrDefault(emptyList()).take(5)
-                        _uiState.value = SearchUiState.TitleResults(movies = movies, tvShows = tvShows)
+                        when (mediaType) {
+                            "movie" -> {
+                                val movies = movieRepository.searchMoviesFromApi(tmdbApiKey, query).getOrDefault(emptyList())
+                                _uiState.value = SearchUiState.MovieResults(movies = movies)
+                            }
+                            "tv" -> {
+                                val tvShows = tvShowRepository.searchTvShowsFromApi(tmdbApiKey, query).getOrDefault(emptyList())
+                                _uiState.value = SearchUiState.TvShowResults(tvShows = tvShows)
+                            }
+                            "game" -> {
+                                val games = gameRepository.searchGamesFromApi(rawgApiKey, query).getOrDefault(emptyList())
+                                _uiState.value = SearchUiState.GameResults(games = games)
+                            }
+                        }
                     }
                     SearchFilter.PERSON -> {
-                        val persons = movieRepository.searchPerson(apiKey, query).getOrDefault(emptyList()).take(10)
+                        val persons = movieRepository.searchPerson(tmdbApiKey, query).getOrDefault(emptyList()).take(10)
                         _uiState.value = SearchUiState.PersonList(persons = persons)
                     }
-                    SearchFilter.GENRE -> {}
                 }
             } catch (e: Exception) {
                 _uiState.value = SearchUiState.Error(e.message ?: "Error desconocido")
@@ -175,7 +161,9 @@ enum class FilmCategory { ACTED_MOVIES, ACTED_TV, DIRECTED_MOVIES, DIRECTED_TV }
 sealed class SearchUiState {
     object Idle : SearchUiState()
     object Loading : SearchUiState()
-    data class TitleResults(val movies: List<MovieDto>, val tvShows: List<TvShowDto>) : SearchUiState()
+    data class MovieResults(val movies: List<MovieDto>) : SearchUiState()
+    data class TvShowResults(val tvShows: List<TvShowDto>) : SearchUiState()
+    data class GameResults(val games: List<GameDto>) : SearchUiState()
     data class PersonList(val persons: List<PersonDto>) : SearchUiState()
     data class PersonDetail(
         val person: PersonDto,
@@ -190,7 +178,5 @@ sealed class SearchUiState {
         val items: List<PersonCreditDto>,
         val previousState: PersonDetail
     ) : SearchUiState()
-    data class GenreMovieResults(val label: String, val movies: List<MovieDto>) : SearchUiState()
-    data class GenreTvShowResults(val label: String, val tvShows: List<TvShowDto>) : SearchUiState()
     data class Error(val message: String) : SearchUiState()
 }

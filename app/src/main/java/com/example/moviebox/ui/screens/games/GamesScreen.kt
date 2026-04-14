@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,55 +24,76 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.dto.GameDto
+import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
 import com.example.moviebox.ui.theme.MovieBoxSurface
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GamesScreen(
     onGameClick: (Int) -> Unit,
+    onNavigateToSearch: () -> Unit,
     viewModel: GamesViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    when (uiState) {
-        is GamesUiState.Loading -> {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = MovieBoxPrimary)
-            }
-        }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(text = "Juegos", color = MovieBoxPrimary, fontWeight = FontWeight.Bold) },
+                actions = {
+                    IconButton(onClick = onNavigateToSearch) {
+                        Icon(Icons.Default.Search, contentDescription = "Buscar", tint = MovieBoxOnBackground)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MovieBoxBackground)
+            )
+        },
+        containerColor = MovieBoxBackground
+    ) { innerPadding ->
 
-        is GamesUiState.Error -> {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = (uiState as GamesUiState.Error).message, color = MovieBoxOnBackground)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { viewModel.loadContent() }) { Text("Reintentar") }
+        when (uiState) {
+            is GamesUiState.Loading -> {
+                Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MovieBoxPrimary)
                 }
             }
-        }
 
-        is GamesUiState.Success -> {
-            val data = uiState as GamesUiState.Success
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(bottom = 16.dp, top = 8.dp)
-            ) {
-                item {
-                    GameSectionTitle(title = "Juegos populares")
-                    GameRow(games = data.popularGames, onGameClick = onGameClick)
+            is GamesUiState.Error -> {
+                Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = (uiState as GamesUiState.Error).message, color = MovieBoxOnBackground)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { viewModel.loadContent() }) { Text("Reintentar") }
+                    }
                 }
+            }
 
-                item {
-                    GameSectionTitle(title = "Mejor valorados")
-                    GameRow(games = data.topRatedGames, onGameClick = onGameClick)
-                }
+            is GamesUiState.Success -> {
+                val data = uiState as GamesUiState.Success
 
-                item {
-                    GameSectionTitle(title = "Lanzamientos recientes")
-                    GameRow(games = data.recentGames, onGameClick = onGameClick)
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp, top = 8.dp)
+                ) {
+                    item {
+                        GameSectionTitle(title = "Juegos populares")
+                        GameRow(games = data.popularGames, onGameClick = onGameClick)
+                    }
+
+                    item {
+                        GameSectionTitle(title = "Mejor valorados")
+                        GameRow(games = data.topRatedGames, onGameClick = onGameClick)
+                    }
+
+                    item {
+                        GameSectionTitle(title = "Lanzamientos recientes")
+                        GameRow(games = data.recentGames, onGameClick = onGameClick)
+                    }
                 }
             }
         }

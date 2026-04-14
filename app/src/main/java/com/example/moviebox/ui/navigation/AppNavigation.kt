@@ -35,18 +35,12 @@ import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
 import com.example.moviebox.ui.theme.MovieBoxSurface
 
-/**
- * Items de la barra de navegación inferior
- */
 data class BottomNavItem(
     val label: String,
     val route: String,
     val icon: ImageVector
 )
 
-/**
- * Pantallas donde se muestra la barra inferior
- */
 val bottomNavScreens = listOf(
     Screen.Home.route,
     Screen.TvShows.route,
@@ -54,9 +48,6 @@ val bottomNavScreens = listOf(
     Screen.Profile.route
 )
 
-/**
- * Configuración principal de navegación con barra inferior
- */
 @Composable
 fun AppNavigation(
     modifier: Modifier = Modifier,
@@ -91,14 +82,14 @@ fun AppNavigation(
                 )
             }
 
-            // Películas (Home)
+            // Películas
             composable(route = Screen.Home.route) {
                 HomeScreen(
                     onMovieClick = { movieId ->
                         navController.navigate(Screen.MovieDetail.createRoute(movieId))
                     },
                     onNavigateToSearch = {
-                        navController.navigate(Screen.Search.route)
+                        navController.navigate(Screen.Search.createRoute("movie"))
                     },
                     onNavigateToWatchlist = {
                         navController.navigate(Screen.Watchlist.route)
@@ -113,7 +104,7 @@ fun AppNavigation(
                         navController.navigate(Screen.TvShowDetail.createRoute(tvShowId))
                     },
                     onNavigateToSearch = {
-                        navController.navigate(Screen.Search.route)
+                        navController.navigate(Screen.Search.createRoute("tv"))
                     },
                     onNavigateToWatchlist = {
                         navController.navigate(Screen.Watchlist.route)
@@ -126,12 +117,18 @@ fun AppNavigation(
                 GamesScreen(
                     onGameClick = { gameId ->
                         navController.navigate(Screen.GameDetail.createRoute(gameId))
+                    },
+                    onNavigateToSearch = {
+                        navController.navigate(Screen.Search.createRoute("game"))
                     }
                 )
             }
 
-            // Búsqueda
-            composable(route = Screen.Search.route) {
+            // Búsqueda (parametrizada por mediaType)
+            composable(
+                route = Screen.Search.route,
+                arguments = listOf(navArgument("mediaType") { type = NavType.StringType })
+            ) {
                 SearchScreen(
                     onBack = { navController.popBackStack() },
                     onMovieClick = { movieId ->
@@ -139,6 +136,9 @@ fun AppNavigation(
                     },
                     onTvShowClick = { tvShowId ->
                         navController.navigate(Screen.TvShowDetail.createRoute(tvShowId))
+                    },
+                    onGameClick = { gameId ->
+                        navController.navigate(Screen.GameDetail.createRoute(gameId))
                     }
                 )
             }
