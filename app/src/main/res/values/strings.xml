@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MovieBox</string>
+
+    <!-- Auth0 Configuration -->
+    <string name="com_auth0_client_id">AOvF9ZmaNwzKjdugKXgi2ZubJNWC4E5D</string>
+    <string name="com_auth0_domain">dev-f2076dll4zoiw6k6.us.auth0.com</string>
+
+    <!-- TMDB API -->
+    <string name="tmdb_api_key">3ec3dbb22f2043fa67e0ddf84266ad61</string>
+</resources>
