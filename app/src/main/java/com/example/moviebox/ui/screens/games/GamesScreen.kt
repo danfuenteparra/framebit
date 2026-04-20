@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -34,6 +35,7 @@ import com.example.moviebox.ui.theme.MovieBoxSurface
 fun GamesScreen(
     onGameClick: (Int) -> Unit,
     onNavigateToSearch: () -> Unit,
+    onNavigateToWatchlist: () -> Unit,
     viewModel: GamesViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -45,6 +47,9 @@ fun GamesScreen(
                 actions = {
                     IconButton(onClick = onNavigateToSearch) {
                         Icon(Icons.Default.Search, contentDescription = "Buscar", tint = MovieBoxOnBackground)
+                    }
+                    IconButton(onClick = onNavigateToWatchlist) {
+                        Icon(Icons.Default.Favorite, contentDescription = "Mi Lista", tint = MovieBoxOnBackground)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MovieBoxBackground)
@@ -109,17 +114,8 @@ fun GameSectionTitle(title: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = title,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = MovieBoxOnBackground
-        )
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MovieBoxOnBackground.copy(alpha = 0.5f)
-        )
+        Text(text = title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
+        Icon(imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MovieBoxOnBackground.copy(alpha = 0.5f))
     }
 }
 
@@ -138,9 +134,7 @@ fun GameRow(games: List<GameDto>, onGameClick: (Int) -> Unit) {
 @Composable
 fun GameCard(game: GameDto, onClick: () -> Unit) {
     Card(
-        modifier = Modifier
-            .width(160.dp)
-            .clickable { onClick() },
+        modifier = Modifier.width(160.dp).clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = MovieBoxSurface),
         shape = RoundedCornerShape(8.dp)
     ) {
@@ -148,48 +142,19 @@ fun GameCard(game: GameDto, onClick: () -> Unit) {
             AsyncImage(
                 model = game.backgroundImage,
                 contentDescription = game.name,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(100.dp)
-                    .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)),
+                modifier = Modifier.fillMaxWidth().height(100.dp).clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)),
                 contentScale = ContentScale.Crop
             )
             Column(modifier = Modifier.padding(8.dp)) {
-                Text(
-                    text = game.name,
-                    color = MovieBoxOnBackground,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(text = game.name, color = MovieBoxOnBackground, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(modifier = Modifier.height(2.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "\u2B50 ${String.format("%.1f", game.rating)}",
-                        color = MovieBoxPrimary,
-                        fontSize = 11.sp
-                    )
-                    game.metacritic?.let {
-                        Text(
-                            text = "MC: $it",
-                            color = MovieBoxOnBackground.copy(alpha = 0.6f),
-                            fontSize = 11.sp
-                        )
-                    }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "\u2B50 ${String.format("%.1f", game.rating)}", color = MovieBoxPrimary, fontSize = 11.sp)
+                    game.metacritic?.let { Text(text = "MC: $it", color = MovieBoxOnBackground.copy(alpha = 0.6f), fontSize = 11.sp) }
                 }
                 game.genres?.take(2)?.let { genres ->
                     if (genres.isNotEmpty()) {
-                        Text(
-                            text = genres.joinToString(", ") { it.name },
-                            color = MovieBoxOnBackground.copy(alpha = 0.5f),
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Text(text = genres.joinToString(", ") { it.name }, color = MovieBoxOnBackground.copy(alpha = 0.5f), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

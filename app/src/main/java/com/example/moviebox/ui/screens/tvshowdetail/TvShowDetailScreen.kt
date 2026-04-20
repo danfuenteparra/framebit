@@ -130,7 +130,7 @@ fun TvShowDetailScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Pendiente",
+                                    text = "",
                                     fontSize = 11.sp,
                                     maxLines = 1
                                 )
@@ -138,7 +138,7 @@ fun TvShowDetailScreen(
                             Button(onClick = { viewModel.toggleFavorite() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (isFavorite) MovieBoxSurface else MovieBoxPrimary)) {
                                 Icon(imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp)); Text(
-                                text = "Favorita",
+                                text = "",
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 softWrap = false,
@@ -148,7 +148,7 @@ fun TvShowDetailScreen(
                             Button(onClick = { viewModel.toggleWatched() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (isWatched) MovieBoxSurface else MovieBoxPrimary)) {
                                 Icon(imageVector = if (isWatched) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp)); Text(
-                                text = "Vista",
+                                text = "",
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 softWrap = false,

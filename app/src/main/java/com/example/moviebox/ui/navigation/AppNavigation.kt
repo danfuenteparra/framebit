@@ -120,6 +120,9 @@ fun AppNavigation(
                     },
                     onNavigateToSearch = {
                         navController.navigate(Screen.Search.createRoute("game"))
+                    },
+                    onNavigateToWatchlist = {
+                        navController.navigate(Screen.Watchlist.route)
                     }
                 )
             }
@@ -131,24 +134,19 @@ fun AppNavigation(
             ) {
                 SearchScreen(
                     onBack = { navController.popBackStack() },
-                    onMovieClick = { movieId ->
-                        navController.navigate(Screen.MovieDetail.createRoute(movieId))
-                    },
-                    onTvShowClick = { tvShowId ->
-                        navController.navigate(Screen.TvShowDetail.createRoute(tvShowId))
-                    },
-                    onGameClick = { gameId ->
-                        navController.navigate(Screen.GameDetail.createRoute(gameId))
-                    }
+                    onMovieClick = { movieId -> navController.navigate(Screen.MovieDetail.createRoute(movieId)) },
+                    onTvShowClick = { tvShowId -> navController.navigate(Screen.TvShowDetail.createRoute(tvShowId)) },
+                    onGameClick = { gameId -> navController.navigate(Screen.GameDetail.createRoute(gameId)) }
                 )
             }
 
-            // Watchlist
+            // Watchlist (una sola pantalla con tabs internos)
             composable(route = Screen.Watchlist.route) {
                 WatchlistScreen(
                     onBack = { navController.popBackStack() },
                     onMovieClick = { movieId -> navController.navigate(Screen.MovieDetail.createRoute(movieId)) },
-                    onTvShowClick = { tvShowId -> navController.navigate(Screen.TvShowDetail.createRoute(tvShowId)) }
+                    onTvShowClick = { tvShowId -> navController.navigate(Screen.TvShowDetail.createRoute(tvShowId)) },
+                    onGameClick = { gameId -> navController.navigate(Screen.GameDetail.createRoute(gameId)) }
                 )
             }
 
