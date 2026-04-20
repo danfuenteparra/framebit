@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.moviebox.data.remote.dto.TvShowDto
 import com.example.moviebox.data.repository.TvShowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -28,13 +31,19 @@ class TvShowsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = TvShowsUiState.Loading
             try {
-                val popularTvShows = tvShowRepository.getPopularTvShowsFromApi(apiKey)
-                val topRatedTvShows = tvShowRepository.getTopRatedTvShowsFromApi(apiKey)
+                coroutineScope {
+                    val onTheAirDeferred = async { tvShowRepository.getOnTheAirTvShowsFromApi(apiKey) }
+                    val popularDeferred = async { tvShowRepository.getPopularTvShowsFromApi(apiKey) }
+                    val topRatedDeferred = async { tvShowRepository.getTopRatedTvShowsFromApi(apiKey) }
 
-                _uiState.value = TvShowsUiState.Success(
-                    popularTvShows = popularTvShows.getOrDefault(emptyList()),
-                    topRatedTvShows = topRatedTvShows.getOrDefault(emptyList())
-                )
+                    awaitAll(onTheAirDeferred, popularDeferred, topRatedDeferred)
+
+                    _uiState.value = TvShowsUiState.Success(
+                        onTheAirTvShows = onTheAirDeferred.await().getOrDefault(emptyList()),
+                        popularTvShows = popularDeferred.await().getOrDefault(emptyList()),
+                        topRatedTvShows = topRatedDeferred.await().getOrDefault(emptyList())
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.value = TvShowsUiState.Error(e.message ?: "Error desconocido")
             }
@@ -45,6 +54,7 @@ class TvShowsViewModel @Inject constructor(
 sealed class TvShowsUiState {
     object Loading : TvShowsUiState()
     data class Success(
+        val onTheAirTvShows: List<TvShowDto>,
         val popularTvShows: List<TvShowDto>,
         val topRatedTvShows: List<TvShowDto>
     ) : TvShowsUiState()

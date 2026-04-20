@@ -31,6 +31,15 @@ interface TmdbApiService {
         @Query("page") page: Int = 1
     ): MovieResponse
 
+    // Estrenos recientes en cines
+    @GET("movie/now_playing")
+    suspend fun getNowPlayingMovies(
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "es-ES",
+        @Query("page") page: Int = 1,
+        @Query("region") region: String = "ES"
+    ): MovieResponse
+
     @GET("movie/{movie_id}")
     suspend fun getMovieDetails(
         @Path("movie_id") movieId: Int,
@@ -71,6 +80,14 @@ interface TmdbApiService {
 
     @GET("tv/top_rated")
     suspend fun getTopRatedTvShows(
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String = "es-ES",
+        @Query("page") page: Int = 1
+    ): TvShowResponse
+
+    // Estrenos recientes / series en emisión
+    @GET("tv/on_the_air")
+    suspend fun getOnTheAirTvShows(
         @Query("api_key") apiKey: String,
         @Query("language") language: String = "es-ES",
         @Query("page") page: Int = 1

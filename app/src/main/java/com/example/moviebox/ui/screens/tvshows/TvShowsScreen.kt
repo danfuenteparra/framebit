@@ -83,6 +83,13 @@ fun TvShowsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
+                    if (data.onTheAirTvShows.isNotEmpty()) {
+                        item {
+                            TvShowSectionTitle(title = "Estrenos recientes")
+                            TvShowRow(tvShows = data.onTheAirTvShows, onTvShowClick = onTvShowClick)
+                        }
+                    }
+
                     item {
                         TvShowSectionTitle(title = "Series populares")
                         TvShowRow(tvShows = data.popularTvShows, onTvShowClick = onTvShowClick)

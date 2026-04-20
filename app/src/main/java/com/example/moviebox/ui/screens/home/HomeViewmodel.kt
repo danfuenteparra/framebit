@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.moviebox.data.remote.dto.MovieDto
 import com.example.moviebox.data.repository.MovieRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -28,13 +31,19 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = HomeUiState.Loading
             try {
-                val popularMovies = movieRepository.getPopularMoviesFromApi(apiKey)
-                val topRatedMovies = movieRepository.getTopRatedMoviesFromApi(apiKey)
+                coroutineScope {
+                    val nowPlayingDeferred = async { movieRepository.getNowPlayingMoviesFromApi(apiKey) }
+                    val popularDeferred = async { movieRepository.getPopularMoviesFromApi(apiKey) }
+                    val topRatedDeferred = async { movieRepository.getTopRatedMoviesFromApi(apiKey) }
 
-                _uiState.value = HomeUiState.Success(
-                    popularMovies = popularMovies.getOrDefault(emptyList()),
-                    topRatedMovies = topRatedMovies.getOrDefault(emptyList())
-                )
+                    awaitAll(nowPlayingDeferred, popularDeferred, topRatedDeferred)
+
+                    _uiState.value = HomeUiState.Success(
+                        nowPlayingMovies = nowPlayingDeferred.await().getOrDefault(emptyList()),
+                        popularMovies = popularDeferred.await().getOrDefault(emptyList()),
+                        topRatedMovies = topRatedDeferred.await().getOrDefault(emptyList())
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.value = HomeUiState.Error(e.message ?: "Error desconocido")
             }
@@ -45,6 +54,7 @@ class HomeViewModel @Inject constructor(
 sealed class HomeUiState {
     object Loading : HomeUiState()
     data class Success(
+        val nowPlayingMovies: List<MovieDto>,
         val popularMovies: List<MovieDto>,
         val topRatedMovies: List<MovieDto>
     ) : HomeUiState()

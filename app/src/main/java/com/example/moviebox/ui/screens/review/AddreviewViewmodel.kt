@@ -1,0 +1,221 @@
+package com.example.moviebox.ui.screens.addreview
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.moviebox.data.local.entity.GameEntity
+import com.example.moviebox.data.local.entity.MovieEntity
+import com.example.moviebox.data.local.entity.ReviewEntity
+import com.example.moviebox.data.local.entity.TvShowEntity
+import com.example.moviebox.data.remote.dto.GameDto
+import com.example.moviebox.data.remote.dto.MovieDto
+import com.example.moviebox.data.remote.dto.TvShowDto
+import com.example.moviebox.data.repository.GameRepository
+import com.example.moviebox.data.repository.MovieRepository
+import com.example.moviebox.data.repository.ReviewRepository
+import com.example.moviebox.data.repository.TvShowRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+enum class ReviewMediaType { MOVIE, TV, GAME }
+
+sealed class AddReviewSearchState {
+    object Idle : AddReviewSearchState()
+    object Loading : AddReviewSearchState()
+    data class MovieResults(val items: List<MovieDto>) : AddReviewSearchState()
+    data class TvShowResults(val items: List<TvShowDto>) : AddReviewSearchState()
+    data class GameResults(val items: List<GameDto>) : AddReviewSearchState()
+    data class Error(val message: String) : AddReviewSearchState()
+}
+
+/**
+ * Representa el item seleccionado para reseñar (datos mínimos para mostrar
+ * y para guardar la review).
+ */
+data class SelectedMedia(
+    val id: Int,
+    val title: String,
+    val posterUrl: String?,
+    val type: ReviewMediaType
+)
+
+@HiltViewModel
+class AddReviewViewModel @Inject constructor(
+    private val movieRepository: MovieRepository,
+    private val tvShowRepository: TvShowRepository,
+    private val gameRepository: GameRepository,
+    private val reviewRepository: ReviewRepository
+) : ViewModel() {
+
+    private val tmdbApiKey = "3ec3dbb22f2043fa67e0ddf84266ad61"
+    private val rawgApiKey = "3391dac64bae44c1bed7a142c6008538"
+
+    private val _mediaType = MutableStateFlow(ReviewMediaType.MOVIE)
+    val mediaType: StateFlow<ReviewMediaType> = _mediaType
+
+    private val _query = MutableStateFlow("")
+    val query: StateFlow<String> = _query
+
+    private val _searchState = MutableStateFlow<AddReviewSearchState>(AddReviewSearchState.Idle)
+    val searchState: StateFlow<AddReviewSearchState> = _searchState
+
+    private val _selected = MutableStateFlow<SelectedMedia?>(null)
+    val selected: StateFlow<SelectedMedia?> = _selected
+
+    private val _reviewSaved = MutableStateFlow(false)
+    val reviewSaved: StateFlow<Boolean> = _reviewSaved
+
+    fun onMediaTypeChange(type: ReviewMediaType) {
+        if (_mediaType.value == type) return
+        _mediaType.value = type
+        _query.value = ""
+        _searchState.value = AddReviewSearchState.Idle
+    }
+
+    fun onQueryChange(newQuery: String) {
+        _query.value = newQuery
+        if (newQuery.length >= 2) search(newQuery)
+        else _searchState.value = AddReviewSearchState.Idle
+    }
+
+    private fun search(query: String) {
+        viewModelScope.launch {
+            _searchState.value = AddReviewSearchState.Loading
+            try {
+                when (_mediaType.value) {
+                    ReviewMediaType.MOVIE -> {
+                        val r = movieRepository.searchMoviesFromApi(tmdbApiKey, query).getOrDefault(emptyList())
+                        _searchState.value = AddReviewSearchState.MovieResults(r)
+                    }
+                    ReviewMediaType.TV -> {
+                        val r = tvShowRepository.searchTvShowsFromApi(tmdbApiKey, query).getOrDefault(emptyList())
+                        _searchState.value = AddReviewSearchState.TvShowResults(r)
+                    }
+                    ReviewMediaType.GAME -> {
+                        val r = gameRepository.searchGamesFromApi(rawgApiKey, query).getOrDefault(emptyList())
+                        _searchState.value = AddReviewSearchState.GameResults(r)
+                    }
+                }
+            } catch (e: Exception) {
+                _searchState.value = AddReviewSearchState.Error(e.message ?: "Error de búsqueda")
+            }
+        }
+    }
+
+    fun onSelectMovie(movie: MovieDto) {
+        _selected.value = SelectedMedia(
+            id = movie.id,
+            title = movie.title,
+            posterUrl = movie.posterPath,
+            type = ReviewMediaType.MOVIE
+        )
+    }
+
+    fun onSelectTvShow(tvShow: TvShowDto) {
+        _selected.value = SelectedMedia(
+            id = tvShow.id,
+            title = tvShow.name,
+            posterUrl = tvShow.posterPath,
+            type = ReviewMediaType.TV
+        )
+    }
+
+    fun onSelectGame(game: GameDto) {
+        _selected.value = SelectedMedia(
+            id = game.id,
+            title = game.name,
+            posterUrl = game.backgroundImage,
+            type = ReviewMediaType.GAME
+        )
+    }
+
+    fun clearSelection() {
+        _selected.value = null
+    }
+
+    /**
+     * Guarda la reseña y, además, asegura que el item exista en Room
+     * para que la review no quede huérfana de su media en otras pantallas.
+     */
+    fun saveReview(rating: Float, comment: String) {
+        val sel = _selected.value ?: return
+        viewModelScope.launch {
+            ensureMediaInRoom(sel)
+            val mediaTypeStr = when (sel.type) {
+                ReviewMediaType.MOVIE -> "movie"
+                ReviewMediaType.TV -> "tv"
+                ReviewMediaType.GAME -> "game"
+            }
+            reviewRepository.insertReview(
+                ReviewEntity(
+                    mediaId = sel.id,
+                    mediaType = mediaTypeStr,
+                    mediaTitle = sel.title,
+                    rating = rating,
+                    comment = comment
+                )
+            )
+            _reviewSaved.value = true
+        }
+    }
+
+    private suspend fun ensureMediaInRoom(sel: SelectedMedia) {
+        when (sel.type) {
+            ReviewMediaType.MOVIE -> {
+                if (movieRepository.getMovieById(sel.id) == null) {
+                    movieRepository.insertMovie(
+                        MovieEntity(
+                            id = sel.id,
+                            title = sel.title,
+                            overview = "",
+                            posterPath = sel.posterUrl,
+                            backdropPath = null,
+                            releaseDate = "",
+                            voteAverage = 0.0,
+                            voteCount = 0
+                        )
+                    )
+                }
+            }
+            ReviewMediaType.TV -> {
+                if (tvShowRepository.getTvShowById(sel.id) == null) {
+                    tvShowRepository.insertTvShow(
+                        TvShowEntity(
+                            id = sel.id,
+                            name = sel.title,
+                            overview = "",
+                            posterPath = sel.posterUrl,
+                            backdropPath = null,
+                            firstAirDate = "",
+                            voteAverage = 0.0,
+                            voteCount = 0
+                        )
+                    )
+                }
+            }
+            ReviewMediaType.GAME -> {
+                if (gameRepository.getGameById(sel.id) == null) {
+                    gameRepository.insertGame(
+                        GameEntity(
+                            id = sel.id,
+                            name = sel.title,
+                            backgroundImage = sel.posterUrl,
+                            released = null,
+                            rating = 0.0,
+                            ratingsCount = 0,
+                            metacritic = null,
+                            genres = null,
+                            platforms = null
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun consumeReviewSaved() {
+        _reviewSaved.value = false
+    }
+}

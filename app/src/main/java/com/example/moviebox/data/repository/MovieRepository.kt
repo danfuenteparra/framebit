@@ -43,6 +43,9 @@ class MovieRepository @Inject constructor(
     suspend fun getTopRatedMoviesFromApi(apiKey: String): Result<List<MovieDto>> {
         return try { Result.success(apiService.getTopRatedMovies(apiKey).results) } catch (e: Exception) { Result.failure(e) }
     }
+    suspend fun getNowPlayingMoviesFromApi(apiKey: String): Result<List<MovieDto>> {
+        return try { Result.success(apiService.getNowPlayingMovies(apiKey).results) } catch (e: Exception) { Result.failure(e) }
+    }
     suspend fun searchMoviesFromApi(apiKey: String, query: String): Result<List<MovieDto>> {
         return try { Result.success(apiService.searchMovies(apiKey, query).results) } catch (e: Exception) { Result.failure(e) }
     }

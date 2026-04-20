@@ -83,6 +83,13 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
+                    if (data.nowPlayingMovies.isNotEmpty()) {
+                        item {
+                            SectionTitle(title = "Estrenos recientes")
+                            MovieRow(movies = data.nowPlayingMovies, onMovieClick = onMovieClick)
+                        }
+                    }
+
                     item {
                         SectionTitle(title = "Películas populares")
                         MovieRow(movies = data.popularMovies, onMovieClick = onMovieClick)

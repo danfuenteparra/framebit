@@ -41,6 +41,9 @@ class TvShowRepository @Inject constructor(
     suspend fun getTopRatedTvShowsFromApi(apiKey: String): Result<List<TvShowDto>> {
         return try { Result.success(apiService.getTopRatedTvShows(apiKey).results) } catch (e: Exception) { Result.failure(e) }
     }
+    suspend fun getOnTheAirTvShowsFromApi(apiKey: String): Result<List<TvShowDto>> {
+        return try { Result.success(apiService.getOnTheAirTvShows(apiKey).results) } catch (e: Exception) { Result.failure(e) }
+    }
     suspend fun searchTvShowsFromApi(apiKey: String, query: String): Result<List<TvShowDto>> {
         return try { Result.success(apiService.searchTvShows(apiKey, query).results) } catch (e: Exception) { Result.failure(e) }
     }

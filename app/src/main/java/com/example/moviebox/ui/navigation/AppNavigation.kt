@@ -1,16 +1,24 @@
 package com.example.moviebox.ui.navigation
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.RateReview
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -20,6 +28,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.moviebox.ui.screens.addreview.AddReviewScreen
 import com.example.moviebox.ui.screens.games.GamesScreen
 import com.example.moviebox.ui.screens.gamedetail.GameDetailScreen
 import com.example.moviebox.ui.screens.home.HomeScreen
@@ -38,12 +47,14 @@ import com.example.moviebox.ui.theme.MovieBoxSurface
 data class BottomNavItem(
     val label: String,
     val route: String,
-    val icon: ImageVector
+    val icon: ImageVector,
+    val highlighted: Boolean = false // El de Reseñar va destacado
 )
 
 val bottomNavScreens = listOf(
     Screen.Home.route,
     Screen.TvShows.route,
+    Screen.AddReview.route,
     Screen.Games.route,
     Screen.Profile.route
 )
@@ -108,6 +119,17 @@ fun AppNavigation(
                     },
                     onNavigateToWatchlist = {
                         navController.navigate(Screen.Watchlist.route)
+                    }
+                )
+            }
+
+            // Crear reseña global
+            composable(route = Screen.AddReview.route) {
+                AddReviewScreen(
+                    onBack = { navController.popBackStack() },
+                    onReviewSaved = {
+                        // Volvemos a la pantalla anterior tras guardar
+                        navController.popBackStack()
                     }
                 )
             }
@@ -194,6 +216,7 @@ fun BottomNavBar(navController: NavHostController) {
     val items = listOf(
         BottomNavItem("Películas", Screen.Home.route, Icons.Default.Movie),
         BottomNavItem("Series", Screen.TvShows.route, Icons.Default.Tv),
+        BottomNavItem("Reseñar", Screen.AddReview.route, Icons.Default.RateReview, highlighted = true),
         BottomNavItem("Juegos", Screen.Games.route, Icons.Default.SportsEsports),
         BottomNavItem("Perfil", Screen.Profile.route, Icons.Default.Person)
     )
@@ -208,25 +231,68 @@ fun BottomNavBar(navController: NavHostController) {
         items.forEach { item ->
             val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
 
-            NavigationBarItem(
-                icon = { Icon(item.icon, contentDescription = item.label) },
-                label = { Text(item.label, fontSize = MaterialTheme.typography.labelSmall.fontSize) },
-                selected = selected,
-                onClick = {
-                    navController.navigate(item.route) {
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MovieBoxPrimary,
-                    selectedTextColor = MovieBoxPrimary,
-                    unselectedIconColor = MovieBoxOnBackground.copy(alpha = 0.5f),
-                    unselectedTextColor = MovieBoxOnBackground.copy(alpha = 0.5f),
-                    indicatorColor = MovieBoxPrimary.copy(alpha = 0.15f)
+            if (item.highlighted) {
+                // Item central destacado: icono dentro de un círculo de color primario
+                NavigationBarItem(
+                    icon = {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MovieBoxPrimary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                item.icon,
+                                contentDescription = item.label,
+                                tint = MovieBoxBackground
+                            )
+                        }
+                    },
+                    label = {
+                        Text(
+                            item.label,
+                            fontSize = MaterialTheme.typography.labelSmall.fontSize,
+                            color = MovieBoxPrimary
+                        )
+                    },
+                    selected = selected,
+                    onClick = {
+                        navController.navigate(item.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MovieBoxPrimary,
+                        selectedTextColor = MovieBoxPrimary,
+                        unselectedIconColor = MovieBoxPrimary,
+                        unselectedTextColor = MovieBoxPrimary,
+                        indicatorColor = MovieBoxSurface // sin halo
+                    )
                 )
-            )
+            } else {
+                NavigationBarItem(
+                    icon = { Icon(item.icon, contentDescription = item.label) },
+                    label = { Text(item.label, fontSize = MaterialTheme.typography.labelSmall.fontSize) },
+                    selected = selected,
+                    onClick = {
+                        navController.navigate(item.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MovieBoxPrimary,
+                        selectedTextColor = MovieBoxPrimary,
+                        unselectedIconColor = MovieBoxOnBackground.copy(alpha = 0.5f),
+                        unselectedTextColor = MovieBoxOnBackground.copy(alpha = 0.5f),
+                        indicatorColor = MovieBoxPrimary.copy(alpha = 0.15f)
+                    )
+                )
+            }
         }
     }
 }
