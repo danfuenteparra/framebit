@@ -11,6 +11,7 @@ import com.example.moviebox.data.remote.dto.MovieDto
 import com.example.moviebox.data.remote.dto.TvShowDto
 import com.example.moviebox.data.repository.GameRepository
 import com.example.moviebox.data.repository.MovieRepository
+import com.example.moviebox.data.repository.SocialRepository
 import com.example.moviebox.data.repository.TvShowRepository
 import com.auth0.android.result.UserProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,13 +26,13 @@ class ProfileViewModel @Inject constructor(
     private val topItemDao: TopItemDao,
     private val movieRepository: MovieRepository,
     private val tvShowRepository: TvShowRepository,
-    private val gameRepository: GameRepository
+    private val gameRepository: GameRepository,
+    private val socialRepository: SocialRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
     val uiState: StateFlow<ProfileUiState> = _uiState
 
-    // Top items por tipo
     private val _topMovies = MutableStateFlow<List<TopItemEntity?>>(listOf(null, null, null))
     val topMovies: StateFlow<List<TopItemEntity?>> = _topMovies
 
@@ -41,7 +42,14 @@ class ProfileViewModel @Inject constructor(
     private val _topGames = MutableStateFlow<List<TopItemEntity?>>(listOf(null, null, null))
     val topGames: StateFlow<List<TopItemEntity?>> = _topGames
 
-    // Búsqueda
+    // Contadores sociales
+    private val _followersCount = MutableStateFlow(0)
+    val followersCount: StateFlow<Int> = _followersCount
+
+    private val _followingCount = MutableStateFlow(0)
+    val followingCount: StateFlow<Int> = _followingCount
+
+    // Búsqueda interna del Top 3
     private val _searchResults = MutableStateFlow<SearchResults>(SearchResults.Empty)
     val searchResults: StateFlow<SearchResults> = _searchResults
 
@@ -51,7 +59,6 @@ class ProfileViewModel @Inject constructor(
     private val tmdbApiKey = "3ec3dbb22f2043fa67e0ddf84266ad61"
     private val rawgApiKey = "3391dac64bae44c1bed7a142c6008538"
 
-    // ID del usuario actual (se obtiene de Auth0)
     private var currentUserId: String = ""
 
     init {
@@ -67,6 +74,7 @@ class ProfileViewModel @Inject constructor(
                     currentUserId = profile.getId() ?: ""
                     _uiState.value = ProfileUiState.Success(profile)
                     loadTopItems()
+                    refreshSocialCounts()
                 } else {
                     _uiState.value = ProfileUiState.Error("No hay sesión activa")
                 }
@@ -75,6 +83,22 @@ class ProfileViewModel @Inject constructor(
             }
         }
     }
+
+    /** Llamar al volver a la pantalla para refrescar contadores. */
+    fun refreshSocialCounts() {
+        if (currentUserId.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val user = socialRepository.getUser(currentUserId)
+                if (user != null) {
+                    _followersCount.value = user.followersCount
+                    _followingCount.value = user.followingCount
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun getCurrentUserId(): String = currentUserId
 
     private fun loadTopItems() {
         if (currentUserId.isBlank()) return
@@ -142,12 +166,19 @@ class ProfileViewModel @Inject constructor(
                     posterPath = posterPath
                 )
             )
+            // Sincronizar a Firestore para que se vea en perfil público
+            try {
+                socialRepository.syncTopItem(currentUserId, mediaType, position, mediaId, title, posterPath)
+            } catch (_: Exception) { }
         }
     }
 
     fun removeTopItem(mediaType: String, position: Int) {
         viewModelScope.launch {
             topItemDao.deleteTopItem(currentUserId, mediaType, position)
+            try {
+                socialRepository.removeTopItemRemote(currentUserId, mediaType, position)
+            } catch (_: Exception) { }
         }
     }
 

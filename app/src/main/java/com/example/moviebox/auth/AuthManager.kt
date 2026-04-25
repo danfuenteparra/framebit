@@ -16,15 +16,14 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Gestor de autenticación con Auth0
- * Maneja login, logout y gestión de tokens
+ * Gestor de autenticación con Auth0.
+ * Maneja login, logout y gestión de tokens.
  */
 @Singleton
 class AuthManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
-    // Cliente de Auth0
     private val account: Auth0 by lazy {
         Auth0(
             context.getString(com.example.moviebox.R.string.com_auth0_client_id),
@@ -32,18 +31,18 @@ class AuthManager @Inject constructor(
         )
     }
 
-    // Cliente de API de autenticación
     private val authenticationClient: AuthenticationAPIClient by lazy {
         AuthenticationAPIClient(account)
     }
 
-    // Credenciales actuales del usuario
     private var currentCredentials: Credentials? = null
 
-    /**
-     * Inicia el proceso de login con Auth0
-     * Abre el navegador para autenticación
-     */
+    // Cache del perfil de Auth0 (sub, nombre, foto) tras login.
+    private var cachedUserId: String? = null
+    private var cachedName: String? = null
+    private var cachedEmail: String? = null
+    private var cachedPictureUrl: String? = null
+
     suspend fun login(activityContext: Context): Credentials = suspendCancellableCoroutine { continuation ->
         WebAuthProvider
             .login(account)
@@ -61,9 +60,6 @@ class AuthManager @Inject constructor(
             })
     }
 
-    /**
-     * Cierra la sesión del usuario
-     */
     suspend fun logout(activityContext: Context): Unit = suspendCancellableCoroutine { continuation ->
         WebAuthProvider
             .logout(account)
@@ -71,6 +67,10 @@ class AuthManager @Inject constructor(
             .start(activityContext, object : Callback<Void?, AuthenticationException> {
                 override fun onSuccess(result: Void?) {
                     currentCredentials = null
+                    cachedUserId = null
+                    cachedName = null
+                    cachedEmail = null
+                    cachedPictureUrl = null
                     continuation.resume(Unit)
                 }
 
@@ -80,15 +80,17 @@ class AuthManager @Inject constructor(
             })
     }
 
-    /**
-     * Obtiene el perfil del usuario autenticado
-     */
     suspend fun getUserProfile(accessToken: String): UserProfile =
         suspendCancellableCoroutine { continuation ->
             authenticationClient
                 .userInfo(accessToken)
                 .start(object : Callback<UserProfile, AuthenticationException> {
                     override fun onSuccess(result: UserProfile) {
+                        // Rellenamos el cache para accesos posteriores sin hacer petición
+                        cachedUserId = result.getId()
+                        cachedName = result.name ?: result.nickname
+                        cachedEmail = result.email
+                        cachedPictureUrl = result.pictureURL
                         continuation.resume(result)
                     }
 
@@ -98,24 +100,21 @@ class AuthManager @Inject constructor(
                 })
         }
 
-    /**
-     * Verifica si hay un usuario autenticado
-     */
     fun isAuthenticated(): Boolean {
         return currentCredentials != null
     }
 
-    /**
-     * Obtiene el token de acceso actual
-     */
     fun getAccessToken(): String? {
         return currentCredentials?.accessToken
     }
 
-    /**
-     * Obtiene las credenciales actuales
-     */
     fun getCredentials(): Credentials? {
         return currentCredentials
     }
+
+    // ===== Accesos rápidos al perfil cacheado (uso interno en ViewModels) =====
+
+    fun getCachedUserId(): String? = cachedUserId
+    fun getCachedName(): String? = cachedName
+    fun getCachedPictureUrl(): String? = cachedPictureUrl
 }

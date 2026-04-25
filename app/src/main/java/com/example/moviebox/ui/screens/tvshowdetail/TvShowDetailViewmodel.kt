@@ -3,11 +3,13 @@ package com.example.moviebox.ui.screens.tvshowdetail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.moviebox.auth.AuthManager
 import com.example.moviebox.data.local.entity.ReviewEntity
 import com.example.moviebox.data.local.entity.TvShowEntity
 import com.example.moviebox.data.remote.dto.CastDto
 import com.example.moviebox.data.remote.dto.TvShowDetailDto
 import com.example.moviebox.data.repository.ReviewRepository
+import com.example.moviebox.data.repository.SocialRepository
 import com.example.moviebox.data.repository.TvShowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +21,8 @@ import javax.inject.Inject
 class TvShowDetailViewModel @Inject constructor(
     private val tvShowRepository: TvShowRepository,
     private val reviewRepository: ReviewRepository,
+    private val socialRepository: SocialRepository,
+    private val authManager: AuthManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -156,7 +160,27 @@ class TvShowDetailViewModel @Inject constructor(
                 tvShowRepository.toggleWatchlisted(tvShowId, false)
                 _isWatchlisted.value = false
             }
+            syncWatchedRemote(newVal)
             if (!newVal) cleanupIfOrphan()
+        }
+    }
+
+    private fun syncWatchedRemote(isWatched: Boolean) {
+        val userId = authManager.getCachedUserId() ?: return
+        val state = _uiState.value
+        if (state !is TvShowDetailUiState.Success) return
+        val tv = state.tvShow
+        viewModelScope.launch {
+            try {
+                socialRepository.syncWatched(
+                    userId = userId,
+                    mediaType = "tv",
+                    mediaId = tv.id,
+                    title = tv.name,
+                    posterPath = tv.posterPath,
+                    isWatched = isWatched
+                )
+            } catch (_: Exception) { }
         }
     }
 }

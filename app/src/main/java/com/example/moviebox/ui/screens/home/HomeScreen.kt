@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.api.TmdbApiService
 import com.example.moviebox.data.remote.dto.MovieDto
+import com.example.moviebox.ui.components.FriendsActivityRow
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
@@ -37,6 +39,12 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val friendsMovies by viewModel.friendsMovies.collectAsStateWithLifecycle()
+
+    // Recargar actividad de amigos al volver a la pantalla
+    LaunchedEffect(Unit) {
+        viewModel.loadFriendsActivity()
+    }
 
     Scaffold(
         topBar = {
@@ -83,10 +91,15 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-                    if (data.nowPlayingMovies.isNotEmpty()) {
+                    // Sección "De tus amigos" (solo si hay actividad)
+                    if (friendsMovies.isNotEmpty()) {
                         item {
-                            SectionTitle(title = "Estrenos recientes")
-                            MovieRow(movies = data.nowPlayingMovies, onMovieClick = onMovieClick)
+                            SectionTitle(title = "De tus amigos")
+                            FriendsActivityRow(
+                                activities = friendsMovies,
+                                mediaType = "movie",
+                                onItemClick = onMovieClick
+                            )
                         }
                     }
 

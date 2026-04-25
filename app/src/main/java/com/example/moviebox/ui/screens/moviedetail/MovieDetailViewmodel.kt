@@ -3,12 +3,14 @@ package com.example.moviebox.ui.screens.moviedetail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.moviebox.auth.AuthManager
 import com.example.moviebox.data.local.entity.MovieEntity
 import com.example.moviebox.data.local.entity.ReviewEntity
 import com.example.moviebox.data.remote.dto.CastDto
 import com.example.moviebox.data.remote.dto.MovieDetailDto
 import com.example.moviebox.data.repository.MovieRepository
 import com.example.moviebox.data.repository.ReviewRepository
+import com.example.moviebox.data.repository.SocialRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +21,8 @@ import javax.inject.Inject
 class MovieDetailViewModel @Inject constructor(
     private val movieRepository: MovieRepository,
     private val reviewRepository: ReviewRepository,
+    private val socialRepository: SocialRepository,
+    private val authManager: AuthManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -164,7 +168,28 @@ class MovieDetailViewModel @Inject constructor(
                 movieRepository.toggleWatchlisted(movieId, false)
                 _isWatchlisted.value = false
             }
+            // Sincronizar con Firestore para que los amigos la vean
+            syncWatchedRemote(newVal)
             if (!newVal) cleanupIfOrphan()
+        }
+    }
+
+    private fun syncWatchedRemote(isWatched: Boolean) {
+        val userId = authManager.getCachedUserId() ?: return
+        val state = _uiState.value
+        if (state !is MovieDetailUiState.Success) return
+        val movie = state.movie
+        viewModelScope.launch {
+            try {
+                socialRepository.syncWatched(
+                    userId = userId,
+                    mediaType = "movie",
+                    mediaId = movie.id,
+                    title = movie.title,
+                    posterPath = movie.posterPath,
+                    isWatched = isWatched
+                )
+            } catch (_: Exception) { /* silencioso: no bloquear UI si falla red */ }
         }
     }
 }

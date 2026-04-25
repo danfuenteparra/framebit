@@ -1,24 +1,16 @@
 package com.example.moviebox.ui.navigation
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.RateReview
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -28,7 +20,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.moviebox.ui.screens.addreview.AddReviewScreen
 import com.example.moviebox.ui.screens.games.GamesScreen
 import com.example.moviebox.ui.screens.gamedetail.GameDetailScreen
 import com.example.moviebox.ui.screens.home.HomeScreen
@@ -38,6 +29,9 @@ import com.example.moviebox.ui.screens.profile.ProfileScreen
 import com.example.moviebox.ui.screens.search.SearchScreen
 import com.example.moviebox.ui.screens.tvshowdetail.TvShowDetailScreen
 import com.example.moviebox.ui.screens.tvshows.TvShowsScreen
+import com.example.moviebox.ui.screens.userlist.UserListScreen
+import com.example.moviebox.ui.screens.userprofile.UserProfileScreen
+import com.example.moviebox.ui.screens.usersearch.UserSearchScreen
 import com.example.moviebox.ui.screens.watchlist.WatchlistScreen
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
@@ -47,14 +41,12 @@ import com.example.moviebox.ui.theme.MovieBoxSurface
 data class BottomNavItem(
     val label: String,
     val route: String,
-    val icon: ImageVector,
-    val highlighted: Boolean = false // El de Reseñar va destacado
+    val icon: ImageVector
 )
 
 val bottomNavScreens = listOf(
     Screen.Home.route,
     Screen.TvShows.route,
-    Screen.AddReview.route,
     Screen.Games.route,
     Screen.Profile.route
 )
@@ -82,7 +74,6 @@ fun AppNavigation(
             startDestination = Screen.Login.route,
             modifier = modifier.padding(innerPadding)
         ) {
-            // Login
             composable(route = Screen.Login.route) {
                 LoginScreen(
                     onLoginSuccess = {
@@ -93,7 +84,6 @@ fun AppNavigation(
                 )
             }
 
-            // Películas
             composable(route = Screen.Home.route) {
                 HomeScreen(
                     onMovieClick = { movieId ->
@@ -108,7 +98,6 @@ fun AppNavigation(
                 )
             }
 
-            // Series
             composable(route = Screen.TvShows.route) {
                 TvShowsScreen(
                     onTvShowClick = { tvShowId ->
@@ -123,18 +112,6 @@ fun AppNavigation(
                 )
             }
 
-            // Crear reseña global
-            composable(route = Screen.AddReview.route) {
-                AddReviewScreen(
-                    onBack = { navController.popBackStack() },
-                    onReviewSaved = {
-                        // Volvemos a la pantalla anterior tras guardar
-                        navController.popBackStack()
-                    }
-                )
-            }
-
-            // Videojuegos
             composable(route = Screen.Games.route) {
                 GamesScreen(
                     onGameClick = { gameId ->
@@ -149,7 +126,6 @@ fun AppNavigation(
                 )
             }
 
-            // Búsqueda (parametrizada por mediaType)
             composable(
                 route = Screen.Search.route,
                 arguments = listOf(navArgument("mediaType") { type = NavType.StringType })
@@ -162,7 +138,6 @@ fun AppNavigation(
                 )
             }
 
-            // Watchlist (una sola pantalla con tabs internos)
             composable(route = Screen.Watchlist.route) {
                 WatchlistScreen(
                     onBack = { navController.popBackStack() },
@@ -172,7 +147,7 @@ fun AppNavigation(
                 )
             }
 
-            // Perfil
+            // PERFIL PROPIO
             composable(route = Screen.Profile.route) {
                 ProfileScreen(
                     onBack = { navController.popBackStack() },
@@ -180,11 +155,61 @@ fun AppNavigation(
                         navController.navigate(Screen.Login.route) {
                             popUpTo(Screen.Home.route) { inclusive = true }
                         }
+                    },
+                    onNavigateToFollowers = { userId ->
+                        navController.navigate(Screen.UserList.createRoute(userId, "followers"))
+                    },
+                    onNavigateToFollowing = { userId ->
+                        navController.navigate(Screen.UserList.createRoute(userId, "following"))
+                    },
+                    onNavigateToUserSearch = {
+                        navController.navigate(Screen.UserSearch.route)
                     }
                 )
             }
 
-            // Detalle película
+            // BÚSQUEDA DE USUARIOS
+            composable(route = Screen.UserSearch.route) {
+                UserSearchScreen(
+                    onBack = { navController.popBackStack() },
+                    onUserClick = { userId ->
+                        navController.navigate(Screen.UserProfile.createRoute(userId))
+                    }
+                )
+            }
+
+            // PERFIL DE OTRO USUARIO
+            composable(
+                route = Screen.UserProfile.route,
+                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+            ) {
+                UserProfileScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToFollowers = { userId ->
+                        navController.navigate(Screen.UserList.createRoute(userId, "followers"))
+                    },
+                    onNavigateToFollowing = { userId ->
+                        navController.navigate(Screen.UserList.createRoute(userId, "following"))
+                    }
+                )
+            }
+
+            // LISTA SEGUIDORES/SEGUIDOS
+            composable(
+                route = Screen.UserList.route,
+                arguments = listOf(
+                    navArgument("userId") { type = NavType.StringType },
+                    navArgument("listType") { type = NavType.StringType }
+                )
+            ) {
+                UserListScreen(
+                    onBack = { navController.popBackStack() },
+                    onUserClick = { userId ->
+                        navController.navigate(Screen.UserProfile.createRoute(userId))
+                    }
+                )
+            }
+
             composable(
                 route = Screen.MovieDetail.route,
                 arguments = listOf(navArgument("movieId") { type = NavType.IntType })
@@ -192,7 +217,6 @@ fun AppNavigation(
                 MovieDetailScreen(onBack = { navController.popBackStack() })
             }
 
-            // Detalle serie
             composable(
                 route = Screen.TvShowDetail.route,
                 arguments = listOf(navArgument("tvShowId") { type = NavType.IntType })
@@ -200,7 +224,6 @@ fun AppNavigation(
                 TvShowDetailScreen(onBack = { navController.popBackStack() })
             }
 
-            // Detalle videojuego
             composable(
                 route = Screen.GameDetail.route,
                 arguments = listOf(navArgument("gameId") { type = NavType.IntType })
@@ -216,7 +239,6 @@ fun BottomNavBar(navController: NavHostController) {
     val items = listOf(
         BottomNavItem("Películas", Screen.Home.route, Icons.Default.Movie),
         BottomNavItem("Series", Screen.TvShows.route, Icons.Default.Tv),
-        BottomNavItem("Reseñar", Screen.AddReview.route, Icons.Default.RateReview, highlighted = true),
         BottomNavItem("Juegos", Screen.Games.route, Icons.Default.SportsEsports),
         BottomNavItem("Perfil", Screen.Profile.route, Icons.Default.Person)
     )
@@ -231,68 +253,25 @@ fun BottomNavBar(navController: NavHostController) {
         items.forEach { item ->
             val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
 
-            if (item.highlighted) {
-                // Item central destacado: icono dentro de un círculo de color primario
-                NavigationBarItem(
-                    icon = {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(MovieBoxPrimary),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                item.icon,
-                                contentDescription = item.label,
-                                tint = MovieBoxBackground
-                            )
-                        }
-                    },
-                    label = {
-                        Text(
-                            item.label,
-                            fontSize = MaterialTheme.typography.labelSmall.fontSize,
-                            color = MovieBoxPrimary
-                        )
-                    },
-                    selected = selected,
-                    onClick = {
-                        navController.navigate(item.route) {
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MovieBoxPrimary,
-                        selectedTextColor = MovieBoxPrimary,
-                        unselectedIconColor = MovieBoxPrimary,
-                        unselectedTextColor = MovieBoxPrimary,
-                        indicatorColor = MovieBoxSurface // sin halo
-                    )
+            NavigationBarItem(
+                icon = { Icon(item.icon, contentDescription = item.label) },
+                label = { Text(item.label, fontSize = MaterialTheme.typography.labelSmall.fontSize) },
+                selected = selected,
+                onClick = {
+                    navController.navigate(item.route) {
+                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MovieBoxPrimary,
+                    selectedTextColor = MovieBoxPrimary,
+                    unselectedIconColor = MovieBoxOnBackground.copy(alpha = 0.5f),
+                    unselectedTextColor = MovieBoxOnBackground.copy(alpha = 0.5f),
+                    indicatorColor = MovieBoxPrimary.copy(alpha = 0.15f)
                 )
-            } else {
-                NavigationBarItem(
-                    icon = { Icon(item.icon, contentDescription = item.label) },
-                    label = { Text(item.label, fontSize = MaterialTheme.typography.labelSmall.fontSize) },
-                    selected = selected,
-                    onClick = {
-                        navController.navigate(item.route) {
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MovieBoxPrimary,
-                        selectedTextColor = MovieBoxPrimary,
-                        unselectedIconColor = MovieBoxOnBackground.copy(alpha = 0.5f),
-                        unselectedTextColor = MovieBoxOnBackground.copy(alpha = 0.5f),
-                        indicatorColor = MovieBoxPrimary.copy(alpha = 0.15f)
-                    )
-                )
-            }
+            )
         }
     }
 }

@@ -1,10 +1,10 @@
 package com.example.moviebox.ui.screens.profile
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,18 +46,27 @@ import com.example.moviebox.ui.theme.MovieBoxSurface
 fun ProfileScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
+    onNavigateToFollowers: (userId: String) -> Unit,
+    onNavigateToFollowing: (userId: String) -> Unit,
+    onNavigateToUserSearch: () -> Unit,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val topMovies by viewModel.topMovies.collectAsStateWithLifecycle()
     val topTvShows by viewModel.topTvShows.collectAsStateWithLifecycle()
     val topGames by viewModel.topGames.collectAsStateWithLifecycle()
+    val followersCount by viewModel.followersCount.collectAsStateWithLifecycle()
+    val followingCount by viewModel.followingCount.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // Estado del diálogo de búsqueda
     var showSearchDialog by remember { mutableStateOf(false) }
     var searchMediaType by remember { mutableStateOf("") }
     var searchPosition by remember { mutableIntStateOf(0) }
+
+    // Refrescar contadores cada vez que se vuelve a la pantalla
+    LaunchedEffect(Unit) {
+        viewModel.refreshSocialCounts()
+    }
 
     LaunchedEffect(uiState) {
         if (uiState is ProfileUiState.LoggedOut) {
@@ -68,6 +79,9 @@ fun ProfileScreen(
             TopAppBar(
                 title = { Text("Mi Perfil", color = MovieBoxOnBackground, fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = onNavigateToUserSearch) {
+                        Icon(Icons.Default.PersonAdd, contentDescription = "Buscar usuarios", tint = MovieBoxPrimary)
+                    }
                     IconButton(onClick = { viewModel.logout(context) }) {
                         Icon(Icons.Default.ExitToApp, contentDescription = "Cerrar sesión", tint = MovieBoxPrimary)
                     }
@@ -97,10 +111,10 @@ fun ProfileScreen(
                 }
                 is ProfileUiState.Success -> {
                     val profile = (uiState as ProfileUiState.Success).userProfile
+                    val userId = viewModel.getCurrentUserId()
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Foto de perfil
                     if (profile.pictureURL != null) {
                         AsyncImage(
                             model = profile.pictureURL,
@@ -130,6 +144,24 @@ fun ProfileScreen(
                         fontSize = 14.sp,
                         color = MovieBoxOnBackground.copy(alpha = 0.7f)
                     )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Contadores de seguidores / seguidos
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(32.dp)
+                    ) {
+                        SocialStat(
+                            count = followersCount,
+                            label = "Seguidores",
+                            onClick = { if (userId.isNotBlank()) onNavigateToFollowers(userId) }
+                        )
+                        SocialStat(
+                            count = followingCount,
+                            label = "Siguiendo",
+                            onClick = { if (userId.isNotBlank()) onNavigateToFollowing(userId) }
+                        )
+                    }
                 }
                 else -> {}
             }
@@ -144,77 +176,60 @@ fun ProfileScreen(
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MovieBoxOnBackground,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Cabeceras de columna
-            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Text("Películas", fontSize = 13.sp, color = MovieBoxPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                Text("Series", fontSize = 13.sp, color = MovieBoxPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                Text("Juegos", fontSize = 13.sp, color = MovieBoxPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            }
+                textAlign = TextAlign.Start
+            )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Grid 3x3 (3 filas, 3 columnas)
-            for (row in 0..2) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Película
-                    TopItemSlot(
-                        item = topMovies.getOrNull(row),
-                        mediaType = "movie",
-                        modifier = Modifier.weight(1f),
-                        onAdd = {
-                            searchMediaType = "movie"
-                            searchPosition = row
-                            showSearchDialog = true
-                        },
-                        onRemove = { viewModel.removeTopItem("movie", row) }
-                    )
-                    // Serie
-                    TopItemSlot(
-                        item = topTvShows.getOrNull(row),
-                        mediaType = "tv",
-                        modifier = Modifier.weight(1f),
-                        onAdd = {
-                            searchMediaType = "tv"
-                            searchPosition = row
-                            showSearchDialog = true
-                        },
-                        onRemove = { viewModel.removeTopItem("tv", row) }
-                    )
-                    // Juego
-                    TopItemSlot(
-                        item = topGames.getOrNull(row),
-                        mediaType = "game",
-                        modifier = Modifier.weight(1f),
-                        onAdd = {
-                            searchMediaType = "game"
-                            searchPosition = row
-                            showSearchDialog = true
-                        },
-                        onRemove = { viewModel.removeTopItem("game", row) }
-                    )
-                }
-            }
+            // ===== TOP 3 HORIZONTAL =====
+            // 3 filas (películas, series, juegos), cada una con 3 slots horizontales
+            TopRowSection(
+                label = "Películas",
+                items = topMovies,
+                mediaType = "movie",
+                onAdd = { pos ->
+                    searchMediaType = "movie"
+                    searchPosition = pos
+                    showSearchDialog = true
+                },
+                onRemove = { pos -> viewModel.removeTopItem("movie", pos) }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TopRowSection(
+                label = "Series",
+                items = topTvShows,
+                mediaType = "tv",
+                onAdd = { pos ->
+                    searchMediaType = "tv"
+                    searchPosition = pos
+                    showSearchDialog = true
+                },
+                onRemove = { pos -> viewModel.removeTopItem("tv", pos) }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TopRowSection(
+                label = "Juegos",
+                items = topGames,
+                mediaType = "game",
+                onAdd = { pos ->
+                    searchMediaType = "game"
+                    searchPosition = pos
+                    showSearchDialog = true
+                },
+                onRemove = { pos -> viewModel.removeTopItem("game", pos) }
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
             HorizontalDivider(color = MovieBoxSurface, modifier = Modifier.padding(horizontal = 16.dp))
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Botón logout
             Button(
                 onClick = { viewModel.logout(context) },
                 modifier = Modifier
@@ -232,7 +247,6 @@ fun ProfileScreen(
         }
     }
 
-    // Diálogo de búsqueda
     if (showSearchDialog) {
         TopItemSearchDialog(
             mediaType = searchMediaType,
@@ -251,6 +265,68 @@ fun ProfileScreen(
 }
 
 @Composable
+private fun SocialStat(count: Int, label: String, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = count.toString(),
+            color = MovieBoxOnBackground,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = label,
+            color = MovieBoxOnBackground.copy(alpha = 0.7f),
+            fontSize = 13.sp
+        )
+    }
+}
+
+/**
+ * Una fila horizontal de 3 slots para un tipo de media.
+ */
+@Composable
+private fun TopRowSection(
+    label: String,
+    items: List<TopItemEntity?>,
+    mediaType: String,
+    onAdd: (position: Int) -> Unit,
+    onRemove: (position: Int) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            color = MovieBoxPrimary,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            for (pos in 0..2) {
+                TopItemSlot(
+                    item = items.getOrNull(pos),
+                    mediaType = mediaType,
+                    modifier = Modifier.weight(1f),
+                    onAdd = { onAdd(pos) },
+                    onRemove = { onRemove(pos) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun TopItemSlot(
     item: TopItemEntity?,
     mediaType: String,
@@ -261,7 +337,6 @@ fun TopItemSlot(
     val aspectRatio = if (mediaType == "game") 16f / 9f else 2f / 3f
 
     if (item != null) {
-        // Slot con poster
         Box(modifier = modifier) {
             Card(
                 modifier = Modifier
@@ -272,8 +347,8 @@ fun TopItemSlot(
                 colors = CardDefaults.cardColors(containerColor = MovieBoxSurface)
             ) {
                 val imageUrl = when (mediaType) {
-                    "game" -> item.posterPath // URL directa de RAWG
-                    else -> TmdbApiService.getImageUrl(item.posterPath) // TMDB necesita prefijo
+                    "game" -> item.posterPath
+                    else -> TmdbApiService.getImageUrl(item.posterPath)
                 }
                 AsyncImage(
                     model = imageUrl,
@@ -284,7 +359,6 @@ fun TopItemSlot(
             }
         }
     } else {
-        // Slot vacío con botón +
         Card(
             modifier = modifier
                 .fillMaxWidth()
@@ -341,7 +415,6 @@ fun TopItemSearchDialog(
             colors = CardDefaults.cardColors(containerColor = MovieBoxBackground)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Header
                 TopAppBar(
                     title = { Text(title, color = MovieBoxOnBackground, fontSize = 16.sp) },
                     navigationIcon = {
@@ -352,7 +425,6 @@ fun TopItemSearchDialog(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MovieBoxBackground)
                 )
 
-                // Barra de búsqueda
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { viewModel.searchForType(it, mediaType) },
@@ -371,7 +443,6 @@ fun TopItemSearchDialog(
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
 
-                // Resultados
                 when (searchResults) {
                     is SearchResults.Empty -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

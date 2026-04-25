@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.api.TmdbApiService
 import com.example.moviebox.data.remote.dto.TvShowDto
+import com.example.moviebox.ui.components.FriendsActivityRow
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
@@ -37,6 +39,11 @@ fun TvShowsScreen(
     viewModel: TvShowsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val friendsTvShows by viewModel.friendsTvShows.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadFriendsActivity()
+    }
 
     Scaffold(
         topBar = {
@@ -83,10 +90,14 @@ fun TvShowsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-                    if (data.onTheAirTvShows.isNotEmpty()) {
+                    if (friendsTvShows.isNotEmpty()) {
                         item {
-                            TvShowSectionTitle(title = "Estrenos recientes")
-                            TvShowRow(tvShows = data.onTheAirTvShows, onTvShowClick = onTvShowClick)
+                            TvShowSectionTitle(title = "De tus amigos")
+                            FriendsActivityRow(
+                                activities = friendsTvShows,
+                                mediaType = "tv",
+                                onItemClick = onTvShowClick
+                            )
                         }
                     }
 

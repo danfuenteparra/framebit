@@ -3,12 +3,14 @@ package com.example.moviebox.ui.screens.gamedetail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.moviebox.auth.AuthManager
 import com.example.moviebox.data.local.entity.GameEntity
 import com.example.moviebox.data.local.entity.ReviewEntity
 import com.example.moviebox.data.remote.dto.GameDetailDto
 import com.example.moviebox.data.remote.dto.ScreenshotDto
 import com.example.moviebox.data.repository.GameRepository
 import com.example.moviebox.data.repository.ReviewRepository
+import com.example.moviebox.data.repository.SocialRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +21,8 @@ import javax.inject.Inject
 class GameDetailViewModel @Inject constructor(
     private val gameRepository: GameRepository,
     private val reviewRepository: ReviewRepository,
+    private val socialRepository: SocialRepository,
+    private val authManager: AuthManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -162,7 +166,27 @@ class GameDetailViewModel @Inject constructor(
                 gameRepository.toggleWatchlisted(gameId, false)
                 _isWatchlisted.value = false
             }
+            syncPlayedRemote(newVal)
             if (!newVal) cleanupIfOrphan()
+        }
+    }
+
+    private fun syncPlayedRemote(isPlayed: Boolean) {
+        val userId = authManager.getCachedUserId() ?: return
+        val state = _uiState.value
+        if (state !is GameDetailUiState.Success) return
+        val game = state.game
+        viewModelScope.launch {
+            try {
+                socialRepository.syncWatched(
+                    userId = userId,
+                    mediaType = "game",
+                    mediaId = game.id,
+                    title = game.name,
+                    posterPath = game.backgroundImage,
+                    isWatched = isPlayed
+                )
+            } catch (_: Exception) { }
         }
     }
 }

@@ -10,7 +10,6 @@ sealed class Screen(val route: String) {
     object Games : Screen("games")
     object Watchlist : Screen("watchlist")
     object Profile : Screen("profile")
-    object AddReview : Screen("add_review")
     object Search : Screen("search/{mediaType}") {
         fun createRoute(mediaType: String) = "search/$mediaType"
     }
@@ -22,5 +21,16 @@ sealed class Screen(val route: String) {
     }
     object GameDetail : Screen("game_detail/{gameId}") {
         fun createRoute(gameId: Int) = "game_detail/$gameId"
+    }
+
+    // Sociales
+    object UserSearch : Screen("user_search")
+    object UserProfile : Screen("user_profile/{userId}") {
+        fun createRoute(userId: String) = "user_profile/${java.net.URLEncoder.encode(userId, "UTF-8")}"
+    }
+    object UserList : Screen("user_list/{userId}/{listType}") {
+        // listType: "followers" | "following"
+        fun createRoute(userId: String, listType: String) =
+            "user_list/${java.net.URLEncoder.encode(userId, "UTF-8")}/$listType"
     }
 }

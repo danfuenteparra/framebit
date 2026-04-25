@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +26,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.dto.GameDto
+import com.example.moviebox.ui.components.FriendsActivityRow
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
@@ -39,6 +41,11 @@ fun GamesScreen(
     viewModel: GamesViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val friendsGames by viewModel.friendsGames.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadFriendsActivity()
+    }
 
     Scaffold(
         topBar = {
@@ -85,6 +92,17 @@ fun GamesScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 16.dp, top = 8.dp)
                 ) {
+                    if (friendsGames.isNotEmpty()) {
+                        item {
+                            GameSectionTitle(title = "De tus amigos")
+                            FriendsActivityRow(
+                                activities = friendsGames,
+                                mediaType = "game",
+                                onItemClick = onGameClick
+                            )
+                        }
+                    }
+
                     item {
                         GameSectionTitle(title = "Juegos populares")
                         GameRow(games = data.popularGames, onGameClick = onGameClick)

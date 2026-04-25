@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -113,4 +114,9 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.7.6")
     debugImplementation("androidx.compose.ui:ui-tooling:1.7.6")
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.7.6")
+
+    // Firestore (versiones explícitas, sin BoM)
+    implementation("com.google.firebase:firebase-firestore-ktx:25.1.1")
+    implementation("com.google.firebase:firebase-auth-ktx:23.1.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 }
