@@ -6,9 +6,6 @@ import com.example.moviebox.data.remote.model.PublicUser
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Fachada para toda la parte social (usuarios, follows, actividad de amigos).
- */
 @Singleton
 class SocialRepository @Inject constructor(
     private val firestore: FirestoreService
@@ -34,33 +31,39 @@ class SocialRepository @Inject constructor(
         firestore.isFollowing(currentUserId, targetUserId)
 
     suspend fun getFollowing(userId: String): List<PublicUser> = firestore.getFollowing(userId)
-
     suspend fun getFollowers(userId: String): List<PublicUser> = firestore.getFollowers(userId)
 
+    // Vistos por amigos = lo que han reseñado
     suspend fun getFriendsMovies(userId: String): List<FriendActivity> {
         val ids = firestore.getFollowingIds(userId)
-        return firestore.getFriendsActivity(ids, "movie")
+        return firestore.getFriendsReviewedItems(ids, "movie")
     }
 
     suspend fun getFriendsTvShows(userId: String): List<FriendActivity> {
         val ids = firestore.getFollowingIds(userId)
-        return firestore.getFriendsActivity(ids, "tv")
+        return firestore.getFriendsReviewedItems(ids, "tv")
     }
 
     suspend fun getFriendsGames(userId: String): List<FriendActivity> {
         val ids = firestore.getFollowingIds(userId)
-        return firestore.getFriendsActivity(ids, "game")
+        return firestore.getFriendsReviewedItems(ids, "game")
     }
 
-    suspend fun syncWatched(
+    // Sincronización de reseñas
+    suspend fun syncReview(
         userId: String,
         mediaType: String,
         mediaId: Int,
         title: String,
         posterPath: String?,
-        isWatched: Boolean
-    ) = firestore.setWatched(userId, mediaType, mediaId, title, posterPath, isWatched)
+        rating: Float,
+        comment: String
+    ) = firestore.upsertReview(userId, mediaType, mediaId, title, posterPath, rating, comment)
 
+    suspend fun deleteReviewRemote(userId: String, mediaType: String, mediaId: Int) =
+        firestore.deleteReview(userId, mediaType, mediaId)
+
+    // Top 3
     suspend fun syncTopItem(
         userId: String,
         mediaType: String,

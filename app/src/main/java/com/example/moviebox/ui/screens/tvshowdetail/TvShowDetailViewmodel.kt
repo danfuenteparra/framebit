@@ -14,6 +14,7 @@ import com.example.moviebox.data.repository.TvShowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -105,12 +106,33 @@ class TvShowDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val state = _uiState.value
             val title = if (state is TvShowDetailUiState.Success) state.tvShow.name else ""
-            reviewRepository.insertReview(ReviewEntity(mediaId = tvShowId, mediaType = "tv", mediaTitle = title, rating = rating, comment = comment))
+            val posterPath = if (state is TvShowDetailUiState.Success) state.tvShow.posterPath else null
+
+            reviewRepository.insertReview(
+                ReviewEntity(mediaId = tvShowId, mediaType = "tv", mediaTitle = title, rating = rating, comment = comment)
+            )
+            val userId = authManager.getCachedUserId()
+            if (userId != null) {
+                try {
+                    socialRepository.syncReview(userId, "tv", tvShowId, title, posterPath, rating, comment)
+                } catch (_: Exception) { }
+            }
         }
     }
 
     fun deleteReview(reviewId: Int) {
-        viewModelScope.launch { reviewRepository.deleteReviewById(reviewId) }
+        viewModelScope.launch {
+            reviewRepository.deleteReviewById(reviewId)
+            val remaining = reviewRepository.getReviewsForMedia(tvShowId, "tv").first()
+            if (remaining.isEmpty()) {
+                val userId = authManager.getCachedUserId()
+                if (userId != null) {
+                    try {
+                        socialRepository.deleteReviewRemote(userId, "tv", tvShowId)
+                    } catch (_: Exception) { }
+                }
+            }
+        }
     }
 
     private suspend fun ensureInRoom() {
@@ -160,27 +182,7 @@ class TvShowDetailViewModel @Inject constructor(
                 tvShowRepository.toggleWatchlisted(tvShowId, false)
                 _isWatchlisted.value = false
             }
-            syncWatchedRemote(newVal)
             if (!newVal) cleanupIfOrphan()
-        }
-    }
-
-    private fun syncWatchedRemote(isWatched: Boolean) {
-        val userId = authManager.getCachedUserId() ?: return
-        val state = _uiState.value
-        if (state !is TvShowDetailUiState.Success) return
-        val tv = state.tvShow
-        viewModelScope.launch {
-            try {
-                socialRepository.syncWatched(
-                    userId = userId,
-                    mediaType = "tv",
-                    mediaId = tv.id,
-                    title = tv.name,
-                    posterPath = tv.posterPath,
-                    isWatched = isWatched
-                )
-            } catch (_: Exception) { }
         }
     }
 }

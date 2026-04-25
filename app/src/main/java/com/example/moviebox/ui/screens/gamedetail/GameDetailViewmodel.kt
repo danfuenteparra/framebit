@@ -14,6 +14,7 @@ import com.example.moviebox.data.repository.SocialRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -91,20 +92,33 @@ class GameDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val state = _uiState.value
             val title = if (state is GameDetailUiState.Success) state.game.name else ""
+            val posterPath = if (state is GameDetailUiState.Success) state.game.backgroundImage else null
+
             reviewRepository.insertReview(
-                ReviewEntity(
-                    mediaId = gameId,
-                    mediaType = "game",
-                    mediaTitle = title,
-                    rating = rating,
-                    comment = comment
-                )
+                ReviewEntity(mediaId = gameId, mediaType = "game", mediaTitle = title, rating = rating, comment = comment)
             )
+            val userId = authManager.getCachedUserId()
+            if (userId != null) {
+                try {
+                    socialRepository.syncReview(userId, "game", gameId, title, posterPath, rating, comment)
+                } catch (_: Exception) { }
+            }
         }
     }
 
     fun deleteReview(reviewId: Int) {
-        viewModelScope.launch { reviewRepository.deleteReviewById(reviewId) }
+        viewModelScope.launch {
+            reviewRepository.deleteReviewById(reviewId)
+            val remaining = reviewRepository.getReviewsForMedia(gameId, "game").first()
+            if (remaining.isEmpty()) {
+                val userId = authManager.getCachedUserId()
+                if (userId != null) {
+                    try {
+                        socialRepository.deleteReviewRemote(userId, "game", gameId)
+                    } catch (_: Exception) { }
+                }
+            }
+        }
     }
 
     private suspend fun ensureInRoom() {
@@ -114,13 +128,8 @@ class GameDetailViewModel @Inject constructor(
                 val d = state.game
                 gameRepository.insertGame(
                     GameEntity(
-                        id = d.id,
-                        name = d.name,
-                        backgroundImage = d.backgroundImage,
-                        released = d.released,
-                        rating = d.rating,
-                        ratingsCount = d.ratingsCount,
-                        metacritic = d.metacritic,
+                        id = d.id, name = d.name, backgroundImage = d.backgroundImage, released = d.released,
+                        rating = d.rating, ratingsCount = d.ratingsCount, metacritic = d.metacritic,
                         genres = d.genres?.joinToString(", ") { it.name },
                         platforms = d.platforms?.joinToString(", ") { it.platform.name }
                     )
@@ -166,27 +175,7 @@ class GameDetailViewModel @Inject constructor(
                 gameRepository.toggleWatchlisted(gameId, false)
                 _isWatchlisted.value = false
             }
-            syncPlayedRemote(newVal)
             if (!newVal) cleanupIfOrphan()
-        }
-    }
-
-    private fun syncPlayedRemote(isPlayed: Boolean) {
-        val userId = authManager.getCachedUserId() ?: return
-        val state = _uiState.value
-        if (state !is GameDetailUiState.Success) return
-        val game = state.game
-        viewModelScope.launch {
-            try {
-                socialRepository.syncWatched(
-                    userId = userId,
-                    mediaType = "game",
-                    mediaId = game.id,
-                    title = game.name,
-                    posterPath = game.backgroundImage,
-                    isWatched = isPlayed
-                )
-            } catch (_: Exception) { }
         }
     }
 }

@@ -14,6 +14,7 @@ import com.example.moviebox.data.repository.SocialRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -112,12 +113,35 @@ class MovieDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val state = _uiState.value
             val title = if (state is MovieDetailUiState.Success) state.movie.title else ""
-            reviewRepository.insertReview(ReviewEntity(mediaId = movieId, mediaType = "movie", mediaTitle = title, rating = rating, comment = comment))
+            val posterPath = if (state is MovieDetailUiState.Success) state.movie.posterPath else null
+
+            reviewRepository.insertReview(
+                ReviewEntity(mediaId = movieId, mediaType = "movie", mediaTitle = title, rating = rating, comment = comment)
+            )
+            // Sincronizar reseña a Firestore
+            val userId = authManager.getCachedUserId()
+            if (userId != null) {
+                try {
+                    socialRepository.syncReview(userId, "movie", movieId, title, posterPath, rating, comment)
+                } catch (_: Exception) { }
+            }
         }
     }
 
     fun deleteReview(reviewId: Int) {
-        viewModelScope.launch { reviewRepository.deleteReviewById(reviewId) }
+        viewModelScope.launch {
+            reviewRepository.deleteReviewById(reviewId)
+            // Si ya no quedan reseñas locales para esta peli, borrar de Firestore
+            val remaining = reviewRepository.getReviewsForMedia(movieId, "movie").first()
+            if (remaining.isEmpty()) {
+                val userId = authManager.getCachedUserId()
+                if (userId != null) {
+                    try {
+                        socialRepository.deleteReviewRemote(userId, "movie", movieId)
+                    } catch (_: Exception) { }
+                }
+            }
+        }
     }
 
     private suspend fun ensureInRoom() {
@@ -163,33 +187,11 @@ class MovieDetailViewModel @Inject constructor(
             val newVal = !_isWatched.value
             movieRepository.toggleWatched(movieId, newVal)
             _isWatched.value = newVal
-            // Al marcar como vista, quitar de watchlist
             if (newVal && _isWatchlisted.value) {
                 movieRepository.toggleWatchlisted(movieId, false)
                 _isWatchlisted.value = false
             }
-            // Sincronizar con Firestore para que los amigos la vean
-            syncWatchedRemote(newVal)
             if (!newVal) cleanupIfOrphan()
-        }
-    }
-
-    private fun syncWatchedRemote(isWatched: Boolean) {
-        val userId = authManager.getCachedUserId() ?: return
-        val state = _uiState.value
-        if (state !is MovieDetailUiState.Success) return
-        val movie = state.movie
-        viewModelScope.launch {
-            try {
-                socialRepository.syncWatched(
-                    userId = userId,
-                    mediaType = "movie",
-                    mediaId = movie.id,
-                    title = movie.title,
-                    posterPath = movie.posterPath,
-                    isWatched = isWatched
-                )
-            } catch (_: Exception) { /* silencioso: no bloquear UI si falla red */ }
         }
     }
 }

@@ -10,11 +10,6 @@ import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Todas las operaciones contra Firestore.
- * El ID canónico del usuario es el 'sub' de Auth0 (lo pasa quien llama).
- * Firebase Auth anónimo se usa solo para pasar las reglas de seguridad.
- */
 @Singleton
 class FirestoreService @Inject constructor(
     private val firestore: FirebaseFirestore,
@@ -23,9 +18,6 @@ class FirestoreService @Inject constructor(
 
     // =================== AUTH BRIDGE ===================
 
-    /**
-     * Llamar tras hacer login con Auth0. Hace signInAnonymously si hace falta.
-     */
     suspend fun ensureFirebaseSignedIn() {
         if (firebaseAuth.currentUser == null) {
             firebaseAuth.signInAnonymously().await()
@@ -34,10 +26,6 @@ class FirestoreService @Inject constructor(
 
     // =================== USUARIOS ===================
 
-    /**
-     * Crea o actualiza el documento del usuario actual en users/{userId}.
-     * Se llama tras cada login para mantener nombre/foto al día.
-     */
     suspend fun upsertCurrentUser(
         userId: String,
         name: String,
@@ -53,7 +41,6 @@ class FirestoreService @Inject constructor(
             "email" to email,
             "pictureUrl" to pictureUrl,
             "searchableName" to name.lowercase(),
-            // counts solo se inicializan la primera vez
             "followersCount" to (existing.getLong("followersCount") ?: 0L),
             "followingCount" to (existing.getLong("followingCount") ?: 0L)
         )
@@ -65,14 +52,9 @@ class FirestoreService @Inject constructor(
             firestore.collection("users").document(userId)
                 .get().await()
                 .toObject(PublicUser::class.java)
-        } catch (e: Exception) {
-            null
-        }
+        } catch (e: Exception) { null }
     }
 
-    /**
-     * Búsqueda por prefijo de nombre (case-insensitive).
-     */
     suspend fun searchUsers(query: String, excludeUserId: String): List<PublicUser> {
         if (query.isBlank()) return emptyList()
         val q = query.lowercase()
@@ -85,34 +67,24 @@ class FirestoreService @Inject constructor(
                 .get().await()
                 .toObjects(PublicUser::class.java)
                 .filter { it.userId != excludeUserId }
-        } catch (e: Exception) {
-            emptyList()
-        }
+        } catch (e: Exception) { emptyList() }
     }
 
     // =================== FOLLOW / UNFOLLOW ===================
 
     suspend fun follow(currentUserId: String, targetUserId: String) {
         if (currentUserId == targetUserId) return
-
         val batch = firestore.batch()
         val now = System.currentTimeMillis()
 
-        // currentUser → following → targetUser
         val followingRef = firestore.collection("users")
-            .document(currentUserId)
-            .collection("following")
-            .document(targetUserId)
+            .document(currentUserId).collection("following").document(targetUserId)
         batch.set(followingRef, mapOf("followedAt" to now))
 
-        // targetUser → followers → currentUser
         val followerRef = firestore.collection("users")
-            .document(targetUserId)
-            .collection("followers")
-            .document(currentUserId)
+            .document(targetUserId).collection("followers").document(currentUserId)
         batch.set(followerRef, mapOf("followedAt" to now))
 
-        // incrementar contadores
         batch.update(
             firestore.collection("users").document(currentUserId),
             "followingCount", FieldValue.increment(1)
@@ -121,25 +93,17 @@ class FirestoreService @Inject constructor(
             firestore.collection("users").document(targetUserId),
             "followersCount", FieldValue.increment(1)
         )
-
         batch.commit().await()
     }
 
     suspend fun unfollow(currentUserId: String, targetUserId: String) {
         val batch = firestore.batch()
-
         val followingRef = firestore.collection("users")
-            .document(currentUserId)
-            .collection("following")
-            .document(targetUserId)
+            .document(currentUserId).collection("following").document(targetUserId)
         batch.delete(followingRef)
-
         val followerRef = firestore.collection("users")
-            .document(targetUserId)
-            .collection("followers")
-            .document(currentUserId)
+            .document(targetUserId).collection("followers").document(currentUserId)
         batch.delete(followerRef)
-
         batch.update(
             firestore.collection("users").document(currentUserId),
             "followingCount", FieldValue.increment(-1)
@@ -148,73 +112,44 @@ class FirestoreService @Inject constructor(
             firestore.collection("users").document(targetUserId),
             "followersCount", FieldValue.increment(-1)
         )
-
         batch.commit().await()
     }
 
     suspend fun isFollowing(currentUserId: String, targetUserId: String): Boolean {
         return try {
             firestore.collection("users")
-                .document(currentUserId)
-                .collection("following")
-                .document(targetUserId)
-                .get().await()
-                .exists()
-        } catch (e: Exception) {
-            false
-        }
+                .document(currentUserId).collection("following").document(targetUserId)
+                .get().await().exists()
+        } catch (e: Exception) { false }
     }
 
-    /**
-     * Devuelve la lista de usuarios seguidos por userId (hidratado con datos públicos).
-     */
     suspend fun getFollowing(userId: String): List<PublicUser> {
         return try {
             val ids = firestore.collection("users")
-                .document(userId)
-                .collection("following")
-                .get().await()
-                .documents.map { it.id }
-
-            if (ids.isEmpty()) emptyList()
-            else fetchUsersByIds(ids)
-        } catch (e: Exception) {
-            emptyList()
-        }
+                .document(userId).collection("following")
+                .get().await().documents.map { it.id }
+            if (ids.isEmpty()) emptyList() else fetchUsersByIds(ids)
+        } catch (e: Exception) { emptyList() }
     }
 
     suspend fun getFollowers(userId: String): List<PublicUser> {
         return try {
             val ids = firestore.collection("users")
-                .document(userId)
-                .collection("followers")
-                .get().await()
-                .documents.map { it.id }
-
-            if (ids.isEmpty()) emptyList()
-            else fetchUsersByIds(ids)
-        } catch (e: Exception) {
-            emptyList()
-        }
+                .document(userId).collection("followers")
+                .get().await().documents.map { it.id }
+            if (ids.isEmpty()) emptyList() else fetchUsersByIds(ids)
+        } catch (e: Exception) { emptyList() }
     }
 
-    /**
-     * Devuelve solo los IDs de los seguidos (útil para queries de actividad).
-     */
     suspend fun getFollowingIds(userId: String): List<String> {
         return try {
             firestore.collection("users")
-                .document(userId)
-                .collection("following")
-                .get().await()
-                .documents.map { it.id }
-        } catch (e: Exception) {
-            emptyList()
-        }
+                .document(userId).collection("following")
+                .get().await().documents.map { it.id }
+        } catch (e: Exception) { emptyList() }
     }
 
     private suspend fun fetchUsersByIds(ids: List<String>): List<PublicUser> {
-        // Firestore whereIn soporta hasta 30 ids por query
         val chunks = ids.chunked(30)
         val result = mutableListOf<PublicUser>()
         for (chunk in chunks) {
@@ -226,60 +161,60 @@ class FirestoreService @Inject constructor(
         return result
     }
 
-    // =================== ACTIVIDAD (vistos/jugados) ===================
+    // =================== RESEÑAS (fuente de "actividad de amigos") ===================
 
-    /**
-     * Sube o quita un item visto por el usuario.
-     * mediaType: "movie" | "tv" | "game"
-     */
-    suspend fun setWatched(
+    suspend fun upsertReview(
         userId: String,
         mediaType: String,
         mediaId: Int,
         title: String,
         posterPath: String?,
-        isWatched: Boolean
+        rating: Float,
+        comment: String
     ) {
-        val collection = collectionForType(mediaType)
-        val ref = firestore.collection("users")
+        val docId = "${mediaType}_$mediaId"
+        firestore.collection("users")
             .document(userId)
-            .collection(collection)
-            .document(mediaId.toString())
-
-        if (isWatched) {
-            ref.set(
+            .collection("reviews")
+            .document(docId)
+            .set(
                 mapOf(
+                    "mediaType" to mediaType,
                     "mediaId" to mediaId,
                     "title" to title,
                     "posterPath" to posterPath,
-                    "watchedAt" to System.currentTimeMillis()
+                    "rating" to rating,
+                    "comment" to comment,
+                    "createdAt" to System.currentTimeMillis()
                 )
             ).await()
-        } else {
-            ref.delete().await()
-        }
     }
 
-    /**
-     * Devuelve la actividad reciente (vistos/jugados) de los amigos.
-     */
-    suspend fun getFriendsActivity(
+    suspend fun deleteReview(userId: String, mediaType: String, mediaId: Int) {
+        val docId = "${mediaType}_$mediaId"
+        firestore.collection("users")
+            .document(userId)
+            .collection("reviews")
+            .document(docId)
+            .delete().await()
+    }
+
+    suspend fun getFriendsReviewedItems(
         followingIds: List<String>,
         mediaType: String,
         limitPerFriend: Int = 10
     ): List<FriendActivity> {
         if (followingIds.isEmpty()) return emptyList()
-        val collection = collectionForType(mediaType)
-
-        val result = mutableListOf<FriendActivity>()
         val users = fetchUsersByIds(followingIds).associateBy { it.userId }
 
+        val result = mutableListOf<FriendActivity>()
         for (friendId in followingIds) {
             try {
                 val docs = firestore.collection("users")
                     .document(friendId)
-                    .collection(collection)
-                    .orderBy("watchedAt", Query.Direction.DESCENDING)
+                    .collection("reviews")
+                    .whereEqualTo("mediaType", mediaType)
+                    .orderBy("createdAt", Query.Direction.DESCENDING)
                     .limit(limitPerFriend.toLong())
                     .get().await()
 
@@ -289,15 +224,14 @@ class FirestoreService @Inject constructor(
                         mediaId = (d.getLong("mediaId") ?: 0L).toInt(),
                         title = d.getString("title") ?: "",
                         posterPath = d.getString("posterPath"),
-                        watchedAt = d.getLong("watchedAt") ?: 0L,
+                        watchedAt = d.getLong("createdAt") ?: 0L,
                         friendUserId = friend.userId,
                         friendName = friend.name,
                         friendPicture = friend.pictureUrl
                     )
                 }
-            } catch (_: Exception) { /* ignorar este amigo */ }
+            } catch (_: Exception) { }
         }
-
         return result.sortedByDescending { it.watchedAt }
     }
 
@@ -346,14 +280,5 @@ class FirestoreService @Inject constructor(
         } catch (e: Exception) {
             emptyList()
         }
-    }
-
-    // =================== Helpers ===================
-
-    private fun collectionForType(mediaType: String): String = when (mediaType) {
-        "movie" -> "watched_movies"
-        "tv" -> "watched_tvshows"
-        "game" -> "played_games"
-        else -> throw IllegalArgumentException("mediaType inválido: $mediaType")
     }
 }

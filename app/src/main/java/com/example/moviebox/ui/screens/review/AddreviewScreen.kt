@@ -1,4 +1,4 @@
-package com.example.moviebox.ui.screens.addreview
+package com.example.moviebox.ui.screens.review
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +28,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.api.TmdbApiService
+import com.example.moviebox.ui.screens.review.AddReviewSearchState
+import com.example.moviebox.ui.screens.review.AddReviewViewModel
+import com.example.moviebox.ui.screens.review.ReviewMediaType
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary

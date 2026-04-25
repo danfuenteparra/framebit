@@ -1,7 +1,8 @@
-package com.example.moviebox.ui.screens.addreview
+package com.example.moviebox.ui.screens.review
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.moviebox.auth.AuthManager
 import com.example.moviebox.data.local.entity.GameEntity
 import com.example.moviebox.data.local.entity.MovieEntity
 import com.example.moviebox.data.local.entity.ReviewEntity
@@ -12,6 +13,7 @@ import com.example.moviebox.data.remote.dto.TvShowDto
 import com.example.moviebox.data.repository.GameRepository
 import com.example.moviebox.data.repository.MovieRepository
 import com.example.moviebox.data.repository.ReviewRepository
+import com.example.moviebox.data.repository.SocialRepository
 import com.example.moviebox.data.repository.TvShowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,10 +32,6 @@ sealed class AddReviewSearchState {
     data class Error(val message: String) : AddReviewSearchState()
 }
 
-/**
- * Representa el item seleccionado para reseñar (datos mínimos para mostrar
- * y para guardar la review).
- */
 data class SelectedMedia(
     val id: Int,
     val title: String,
@@ -46,7 +44,9 @@ class AddReviewViewModel @Inject constructor(
     private val movieRepository: MovieRepository,
     private val tvShowRepository: TvShowRepository,
     private val gameRepository: GameRepository,
-    private val reviewRepository: ReviewRepository
+    private val reviewRepository: ReviewRepository,
+    private val socialRepository: SocialRepository,
+    private val authManager: AuthManager
 ) : ViewModel() {
 
     private val tmdbApiKey = "3ec3dbb22f2043fa67e0ddf84266ad61"
@@ -135,10 +135,6 @@ class AddReviewViewModel @Inject constructor(
         _selected.value = null
     }
 
-    /**
-     * Guarda la reseña y, además, asegura que el item exista en Room
-     * para que la review no quede huérfana de su media en otras pantallas.
-     */
     fun saveReview(rating: Float, comment: String) {
         val sel = _selected.value ?: return
         viewModelScope.launch {
@@ -148,6 +144,7 @@ class AddReviewViewModel @Inject constructor(
                 ReviewMediaType.TV -> "tv"
                 ReviewMediaType.GAME -> "game"
             }
+            // Guardar en Room
             reviewRepository.insertReview(
                 ReviewEntity(
                     mediaId = sel.id,
@@ -157,6 +154,21 @@ class AddReviewViewModel @Inject constructor(
                     comment = comment
                 )
             )
+            // Sincronizar a Firestore para que aparezca en la fila "De tus amigos"
+            val userId = authManager.getCachedUserId()
+            if (userId != null) {
+                try {
+                    socialRepository.syncReview(
+                        userId = userId,
+                        mediaType = mediaTypeStr,
+                        mediaId = sel.id,
+                        title = sel.title,
+                        posterPath = sel.posterUrl,
+                        rating = rating,
+                        comment = comment
+                    )
+                } catch (_: Exception) { }
+            }
             _reviewSaved.value = true
         }
     }
@@ -167,14 +179,9 @@ class AddReviewViewModel @Inject constructor(
                 if (movieRepository.getMovieById(sel.id) == null) {
                     movieRepository.insertMovie(
                         MovieEntity(
-                            id = sel.id,
-                            title = sel.title,
-                            overview = "",
-                            posterPath = sel.posterUrl,
-                            backdropPath = null,
-                            releaseDate = "",
-                            voteAverage = 0.0,
-                            voteCount = 0
+                            id = sel.id, title = sel.title, overview = "",
+                            posterPath = sel.posterUrl, backdropPath = null,
+                            releaseDate = "", voteAverage = 0.0, voteCount = 0
                         )
                     )
                 }
@@ -183,14 +190,9 @@ class AddReviewViewModel @Inject constructor(
                 if (tvShowRepository.getTvShowById(sel.id) == null) {
                     tvShowRepository.insertTvShow(
                         TvShowEntity(
-                            id = sel.id,
-                            name = sel.title,
-                            overview = "",
-                            posterPath = sel.posterUrl,
-                            backdropPath = null,
-                            firstAirDate = "",
-                            voteAverage = 0.0,
-                            voteCount = 0
+                            id = sel.id, name = sel.title, overview = "",
+                            posterPath = sel.posterUrl, backdropPath = null,
+                            firstAirDate = "", voteAverage = 0.0, voteCount = 0
                         )
                     )
                 }
@@ -199,15 +201,10 @@ class AddReviewViewModel @Inject constructor(
                 if (gameRepository.getGameById(sel.id) == null) {
                     gameRepository.insertGame(
                         GameEntity(
-                            id = sel.id,
-                            name = sel.title,
-                            backgroundImage = sel.posterUrl,
-                            released = null,
-                            rating = 0.0,
-                            ratingsCount = 0,
-                            metacritic = null,
-                            genres = null,
-                            platforms = null
+                            id = sel.id, name = sel.title,
+                            backgroundImage = sel.posterUrl, released = null,
+                            rating = 0.0, ratingsCount = 0, metacritic = null,
+                            genres = null, platforms = null
                         )
                     )
                 }

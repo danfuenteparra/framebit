@@ -1,7 +1,10 @@
 package com.example.moviebox.ui.navigation
 
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SportsEsports
@@ -9,8 +12,11 @@ import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -20,6 +26,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.moviebox.ui.screens.review.AddReviewScreen
 import com.example.moviebox.ui.screens.games.GamesScreen
 import com.example.moviebox.ui.screens.gamedetail.GameDetailScreen
 import com.example.moviebox.ui.screens.home.HomeScreen
@@ -86,43 +93,25 @@ fun AppNavigation(
 
             composable(route = Screen.Home.route) {
                 HomeScreen(
-                    onMovieClick = { movieId ->
-                        navController.navigate(Screen.MovieDetail.createRoute(movieId))
-                    },
-                    onNavigateToSearch = {
-                        navController.navigate(Screen.Search.createRoute("movie"))
-                    },
-                    onNavigateToWatchlist = {
-                        navController.navigate(Screen.Watchlist.route)
-                    }
+                    onMovieClick = { id -> navController.navigate(Screen.MovieDetail.createRoute(id)) },
+                    onNavigateToSearch = { navController.navigate(Screen.Search.createRoute("movie")) },
+                    onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) }
                 )
             }
 
             composable(route = Screen.TvShows.route) {
                 TvShowsScreen(
-                    onTvShowClick = { tvShowId ->
-                        navController.navigate(Screen.TvShowDetail.createRoute(tvShowId))
-                    },
-                    onNavigateToSearch = {
-                        navController.navigate(Screen.Search.createRoute("tv"))
-                    },
-                    onNavigateToWatchlist = {
-                        navController.navigate(Screen.Watchlist.route)
-                    }
+                    onTvShowClick = { id -> navController.navigate(Screen.TvShowDetail.createRoute(id)) },
+                    onNavigateToSearch = { navController.navigate(Screen.Search.createRoute("tv")) },
+                    onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) }
                 )
             }
 
             composable(route = Screen.Games.route) {
                 GamesScreen(
-                    onGameClick = { gameId ->
-                        navController.navigate(Screen.GameDetail.createRoute(gameId))
-                    },
-                    onNavigateToSearch = {
-                        navController.navigate(Screen.Search.createRoute("game"))
-                    },
-                    onNavigateToWatchlist = {
-                        navController.navigate(Screen.Watchlist.route)
-                    }
+                    onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) },
+                    onNavigateToSearch = { navController.navigate(Screen.Search.createRoute("game")) },
+                    onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) }
                 )
             }
 
@@ -132,22 +121,21 @@ fun AppNavigation(
             ) {
                 SearchScreen(
                     onBack = { navController.popBackStack() },
-                    onMovieClick = { movieId -> navController.navigate(Screen.MovieDetail.createRoute(movieId)) },
-                    onTvShowClick = { tvShowId -> navController.navigate(Screen.TvShowDetail.createRoute(tvShowId)) },
-                    onGameClick = { gameId -> navController.navigate(Screen.GameDetail.createRoute(gameId)) }
+                    onMovieClick = { id -> navController.navigate(Screen.MovieDetail.createRoute(id)) },
+                    onTvShowClick = { id -> navController.navigate(Screen.TvShowDetail.createRoute(id)) },
+                    onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) }
                 )
             }
 
             composable(route = Screen.Watchlist.route) {
                 WatchlistScreen(
                     onBack = { navController.popBackStack() },
-                    onMovieClick = { movieId -> navController.navigate(Screen.MovieDetail.createRoute(movieId)) },
-                    onTvShowClick = { tvShowId -> navController.navigate(Screen.TvShowDetail.createRoute(tvShowId)) },
-                    onGameClick = { gameId -> navController.navigate(Screen.GameDetail.createRoute(gameId)) }
+                    onMovieClick = { id -> navController.navigate(Screen.MovieDetail.createRoute(id)) },
+                    onTvShowClick = { id -> navController.navigate(Screen.TvShowDetail.createRoute(id)) },
+                    onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) }
                 )
             }
 
-            // PERFIL PROPIO
             composable(route = Screen.Profile.route) {
                 ProfileScreen(
                     onBack = { navController.popBackStack() },
@@ -156,45 +144,38 @@ fun AppNavigation(
                             popUpTo(Screen.Home.route) { inclusive = true }
                         }
                     },
-                    onNavigateToFollowers = { userId ->
-                        navController.navigate(Screen.UserList.createRoute(userId, "followers"))
+                    onNavigateToFollowers = { id ->
+                        navController.navigate(Screen.UserList.createRoute(id, "followers"))
                     },
-                    onNavigateToFollowing = { userId ->
-                        navController.navigate(Screen.UserList.createRoute(userId, "following"))
+                    onNavigateToFollowing = { id ->
+                        navController.navigate(Screen.UserList.createRoute(id, "following"))
                     },
-                    onNavigateToUserSearch = {
-                        navController.navigate(Screen.UserSearch.route)
-                    }
+                    onNavigateToUserSearch = { navController.navigate(Screen.UserSearch.route) }
                 )
             }
 
-            // BÚSQUEDA DE USUARIOS
             composable(route = Screen.UserSearch.route) {
                 UserSearchScreen(
                     onBack = { navController.popBackStack() },
-                    onUserClick = { userId ->
-                        navController.navigate(Screen.UserProfile.createRoute(userId))
-                    }
+                    onUserClick = { id -> navController.navigate(Screen.UserProfile.createRoute(id)) }
                 )
             }
 
-            // PERFIL DE OTRO USUARIO
             composable(
                 route = Screen.UserProfile.route,
                 arguments = listOf(navArgument("userId") { type = NavType.StringType })
             ) {
                 UserProfileScreen(
                     onBack = { navController.popBackStack() },
-                    onNavigateToFollowers = { userId ->
-                        navController.navigate(Screen.UserList.createRoute(userId, "followers"))
+                    onNavigateToFollowers = { id ->
+                        navController.navigate(Screen.UserList.createRoute(id, "followers"))
                     },
-                    onNavigateToFollowing = { userId ->
-                        navController.navigate(Screen.UserList.createRoute(userId, "following"))
+                    onNavigateToFollowing = { id ->
+                        navController.navigate(Screen.UserList.createRoute(id, "following"))
                     }
                 )
             }
 
-            // LISTA SEGUIDORES/SEGUIDOS
             composable(
                 route = Screen.UserList.route,
                 arguments = listOf(
@@ -204,9 +185,14 @@ fun AppNavigation(
             ) {
                 UserListScreen(
                     onBack = { navController.popBackStack() },
-                    onUserClick = { userId ->
-                        navController.navigate(Screen.UserProfile.createRoute(userId))
-                    }
+                    onUserClick = { id -> navController.navigate(Screen.UserProfile.createRoute(id)) }
+                )
+            }
+
+            composable(route = Screen.AddReview.route) {
+                AddReviewScreen(
+                    onBack = { navController.popBackStack() },
+                    onReviewSaved = { navController.popBackStack() }
                 )
             }
 
@@ -236,9 +222,11 @@ fun AppNavigation(
 
 @Composable
 fun BottomNavBar(navController: NavHostController) {
-    val items = listOf(
+    val left = listOf(
         BottomNavItem("Películas", Screen.Home.route, Icons.Default.Movie),
-        BottomNavItem("Series", Screen.TvShows.route, Icons.Default.Tv),
+        BottomNavItem("Series", Screen.TvShows.route, Icons.Default.Tv)
+    )
+    val right = listOf(
         BottomNavItem("Juegos", Screen.Games.route, Icons.Default.SportsEsports),
         BottomNavItem("Perfil", Screen.Profile.route, Icons.Default.Person)
     )
@@ -250,28 +238,69 @@ fun BottomNavBar(navController: NavHostController) {
         containerColor = MovieBoxSurface,
         contentColor = MovieBoxOnBackground
     ) {
-        items.forEach { item ->
-            val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
+        left.forEach { item ->
+            BottomItem(item, currentDestination, navController)
+        }
 
-            NavigationBarItem(
-                icon = { Icon(item.icon, contentDescription = item.label) },
-                label = { Text(item.label, fontSize = MaterialTheme.typography.labelSmall.fontSize) },
-                selected = selected,
-                onClick = {
-                    navController.navigate(item.route) {
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MovieBoxPrimary,
-                    selectedTextColor = MovieBoxPrimary,
-                    unselectedIconColor = MovieBoxOnBackground.copy(alpha = 0.5f),
-                    unselectedTextColor = MovieBoxOnBackground.copy(alpha = 0.5f),
-                    indicatorColor = MovieBoxPrimary.copy(alpha = 0.15f)
-                )
+        // Botón central destacado: añadir reseña
+        NavigationBarItem(
+            selected = false,
+            onClick = { navController.navigate(Screen.AddReview.route) },
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MovieBoxPrimary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Añadir reseña",
+                        tint = MovieBoxBackground
+                    )
+                }
+            },
+            label = { Text("Reseñar", fontSize = MaterialTheme.typography.labelSmall.fontSize) },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = MovieBoxPrimary,
+                unselectedIconColor = MovieBoxOnBackground,
+                selectedTextColor = MovieBoxPrimary,
+                unselectedTextColor = MovieBoxOnBackground.copy(alpha = 0.7f),
+                indicatorColor = MovieBoxSurface
             )
+        )
+
+        right.forEach { item ->
+            BottomItem(item, currentDestination, navController)
         }
     }
+}
+
+@Composable
+private fun RowScope.BottomItem(
+    item: BottomNavItem,
+    currentDestination: androidx.navigation.NavDestination?,
+    navController: NavHostController
+) {
+    val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
+    NavigationBarItem(
+        icon = { Icon(item.icon, contentDescription = item.label) },
+        label = { Text(item.label, fontSize = MaterialTheme.typography.labelSmall.fontSize) },
+        selected = selected,
+        onClick = {
+            navController.navigate(item.route) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        },
+        colors = NavigationBarItemDefaults.colors(
+            selectedIconColor = MovieBoxPrimary,
+            selectedTextColor = MovieBoxPrimary,
+            unselectedIconColor = MovieBoxOnBackground.copy(alpha = 0.5f),
+            unselectedTextColor = MovieBoxOnBackground.copy(alpha = 0.5f),
+            indicatorColor = MovieBoxPrimary.copy(alpha = 0.15f)
+        )
+    )
 }

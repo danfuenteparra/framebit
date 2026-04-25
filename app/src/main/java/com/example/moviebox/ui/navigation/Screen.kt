@@ -1,8 +1,5 @@
 package com.example.moviebox.ui.navigation
 
-/**
- * Define todas las rutas de navegación de la app
- */
 sealed class Screen(val route: String) {
     object Login : Screen("login")
     object Home : Screen("home")
@@ -10,6 +7,7 @@ sealed class Screen(val route: String) {
     object Games : Screen("games")
     object Watchlist : Screen("watchlist")
     object Profile : Screen("profile")
+
     object Search : Screen("search/{mediaType}") {
         fun createRoute(mediaType: String) = "search/$mediaType"
     }
@@ -29,8 +27,10 @@ sealed class Screen(val route: String) {
         fun createRoute(userId: String) = "user_profile/${java.net.URLEncoder.encode(userId, "UTF-8")}"
     }
     object UserList : Screen("user_list/{userId}/{listType}") {
-        // listType: "followers" | "following"
         fun createRoute(userId: String, listType: String) =
             "user_list/${java.net.URLEncoder.encode(userId, "UTF-8")}/$listType"
     }
+
+    // Reseña rápida (botón central de la BottomNavBar)
+    object AddReview : Screen("add_review")
 }
