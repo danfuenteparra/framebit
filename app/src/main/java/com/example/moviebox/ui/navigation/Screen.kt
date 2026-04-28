@@ -31,6 +31,11 @@ sealed class Screen(val route: String) {
             "user_list/${java.net.URLEncoder.encode(userId, "UTF-8")}/$listType"
     }
 
-    // Reseña rápida (botón central de la BottomNavBar)
     object AddReview : Screen("add_review")
+
+    // Detalle de reseña de un amigo
+    object ReviewDetail : Screen("review_detail/{reviewId}") {
+        fun createRoute(reviewId: String) =
+            "review_detail/${java.net.URLEncoder.encode(reviewId, "UTF-8")}"
+    }
 }

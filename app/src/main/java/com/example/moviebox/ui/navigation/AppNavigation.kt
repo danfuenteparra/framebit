@@ -40,10 +40,12 @@ import com.example.moviebox.ui.screens.userlist.UserListScreen
 import com.example.moviebox.ui.screens.userprofile.UserProfileScreen
 import com.example.moviebox.ui.screens.usersearch.UserSearchScreen
 import com.example.moviebox.ui.screens.watchlist.WatchlistScreen
+import com.example.moviebox.ui.screens.reviewdetail.ReviewDetailScreen
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
 import com.example.moviebox.ui.theme.MovieBoxSurface
+
 
 data class BottomNavItem(
     val label: String,
@@ -95,7 +97,10 @@ fun AppNavigation(
                 HomeScreen(
                     onMovieClick = { id -> navController.navigate(Screen.MovieDetail.createRoute(id)) },
                     onNavigateToSearch = { navController.navigate(Screen.Search.createRoute("movie")) },
-                    onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) }
+                    onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) },
+                    onReviewClick = { reviewId ->
+                        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
+                    }
                 )
             }
 
@@ -103,7 +108,10 @@ fun AppNavigation(
                 TvShowsScreen(
                     onTvShowClick = { id -> navController.navigate(Screen.TvShowDetail.createRoute(id)) },
                     onNavigateToSearch = { navController.navigate(Screen.Search.createRoute("tv")) },
-                    onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) }
+                    onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) },
+                    onReviewClick = { reviewId ->
+                        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
+                    }
                 )
             }
 
@@ -111,7 +119,10 @@ fun AppNavigation(
                 GamesScreen(
                     onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) },
                     onNavigateToSearch = { navController.navigate(Screen.Search.createRoute("game")) },
-                    onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) }
+                    onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) },
+                    onReviewClick = { reviewId ->
+                        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
+                    }
                 )
             }
 
@@ -215,6 +226,27 @@ fun AppNavigation(
                 arguments = listOf(navArgument("gameId") { type = NavType.IntType })
             ) {
                 GameDetailScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(
+                route = Screen.ReviewDetail.route,
+                arguments = listOf(navArgument("reviewId") { type = NavType.StringType })
+            ) {
+                ReviewDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToMedia = { mediaId, mediaType ->
+                        val route = when (mediaType) {
+                            "movie" -> Screen.MovieDetail.createRoute(mediaId)
+                            "tv" -> Screen.TvShowDetail.createRoute(mediaId)
+                            "game" -> Screen.GameDetail.createRoute(mediaId)
+                            else -> return@ReviewDetailScreen
+                        }
+                        navController.navigate(route)
+                    },
+                    onNavigateToUser = { userId ->
+                        navController.navigate(Screen.UserProfile.createRoute(userId))
+                    }
+                )
             }
         }
     }

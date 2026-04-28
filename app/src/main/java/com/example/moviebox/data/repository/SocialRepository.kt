@@ -2,7 +2,9 @@ package com.example.moviebox.data.repository
 
 import com.example.moviebox.data.remote.firebase.FirestoreService
 import com.example.moviebox.data.remote.model.FriendActivity
+import com.example.moviebox.data.remote.model.FriendReview
 import com.example.moviebox.data.remote.model.PublicUser
+import com.example.moviebox.data.remote.model.ReviewComment
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -52,16 +54,54 @@ class SocialRepository @Inject constructor(
     // Sincronización de reseñas
     suspend fun syncReview(
         userId: String,
+        userName: String,
+        userPicture: String?,
         mediaType: String,
         mediaId: Int,
         title: String,
         posterPath: String?,
+        releaseYear: String,
         rating: Float,
-        comment: String
-    ) = firestore.upsertReview(userId, mediaType, mediaId, title, posterPath, rating, comment)
+        comment: String,
+        isFavorite: Boolean
+    ) = firestore.upsertReview(
+        userId, userName, userPicture, mediaType, mediaId,
+        title, posterPath, releaseYear, rating, comment, isFavorite
+    )
 
     suspend fun deleteReviewRemote(userId: String, mediaType: String, mediaId: Int) =
         firestore.deleteReview(userId, mediaType, mediaId)
+
+    // Likes / comentarios sobre una reseña
+    suspend fun getReviewById(authorUserId: String, mediaType: String, mediaId: Int, currentUserId: String) =
+        firestore.getReviewById(authorUserId, mediaType, mediaId, currentUserId)
+
+    suspend fun getCommentsForReview(authorUserId: String, mediaType: String, mediaId: Int) =
+        firestore.getCommentsForReview(authorUserId, mediaType, mediaId)
+
+    suspend fun toggleLike(authorUserId: String, mediaType: String, mediaId: Int, currentUserId: String) =
+        firestore.toggleLike(authorUserId, mediaType, mediaId, currentUserId)
+
+    suspend fun addComment(
+        authorUserId: String, mediaType: String, mediaId: Int,
+        commenterUserId: String, commenterName: String, commenterPicture: String?, text: String
+    ) = firestore.addComment(
+        authorUserId, mediaType, mediaId, commenterUserId, commenterName, commenterPicture, text
+    )
+
+    suspend fun deleteComment(authorUserId: String, mediaType: String, mediaId: Int, commentId: String) =
+        firestore.deleteComment(authorUserId, mediaType, mediaId, commentId)
+
+    // Listas de reseñas para un media
+    suspend fun getAllReviewsForMedia(mediaType: String, mediaId: Int, currentUserId: String): List<FriendReview> =
+        firestore.getAllReviewsForMedia(mediaType, mediaId, currentUserId)
+
+    suspend fun getFriendsReviewsForMedia(
+        currentUserId: String, mediaType: String, mediaId: Int
+    ): List<FriendReview> {
+        val ids = firestore.getFollowingIds(currentUserId)
+        return firestore.getFriendsReviewsForMedia(ids, mediaType, mediaId, currentUserId)
+    }
 
     // Top 3
     suspend fun syncTopItem(

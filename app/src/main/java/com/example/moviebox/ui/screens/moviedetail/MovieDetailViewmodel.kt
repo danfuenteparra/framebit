@@ -114,6 +114,7 @@ class MovieDetailViewModel @Inject constructor(
             val state = _uiState.value
             val title = if (state is MovieDetailUiState.Success) state.movie.title else ""
             val posterPath = if (state is MovieDetailUiState.Success) state.movie.posterPath else null
+            val releaseYear = if (state is MovieDetailUiState.Success) state.movie.releaseDate.take(4) else ""
 
             reviewRepository.insertReview(
                 ReviewEntity(mediaId = movieId, mediaType = "movie", mediaTitle = title, rating = rating, comment = comment)
@@ -122,7 +123,19 @@ class MovieDetailViewModel @Inject constructor(
             val userId = authManager.getCachedUserId()
             if (userId != null) {
                 try {
-                    socialRepository.syncReview(userId, "movie", movieId, title, posterPath, rating, comment)
+                    socialRepository.syncReview(
+                        userId = userId,
+                        userName = authManager.getCachedName().orEmpty(),
+                        userPicture = authManager.getCachedPictureUrl(),
+                        mediaType = "movie",
+                        mediaId = movieId,
+                        title = title,
+                        posterPath = posterPath,
+                        releaseYear = releaseYear,
+                        rating = rating,
+                        comment = comment,
+                        isFavorite = _isFavorite.value
+                    )
                 } catch (_: Exception) { }
             }
         }
@@ -131,7 +144,6 @@ class MovieDetailViewModel @Inject constructor(
     fun deleteReview(reviewId: Int) {
         viewModelScope.launch {
             reviewRepository.deleteReviewById(reviewId)
-            // Si ya no quedan reseñas locales para esta peli, borrar de Firestore
             val remaining = reviewRepository.getReviewsForMedia(movieId, "movie").first()
             if (remaining.isEmpty()) {
                 val userId = authManager.getCachedUserId()

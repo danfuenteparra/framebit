@@ -8,7 +8,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -21,22 +23,20 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.api.TmdbApiService
 import com.example.moviebox.data.remote.model.FriendActivity
-import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
+import com.example.moviebox.ui.theme.MovieBoxPrimary
 import com.example.moviebox.ui.theme.MovieBoxSurface
 
 /**
- * Tarjeta para mostrar una peli/serie/juego que un amigo ha visto.
- * Muestra el póster con la foto del amigo en la esquina inferior izquierda.
- *
- * @param mediaType "movie" | "tv" | "game" — determina si la URL del poster
- *                  es de TMDB (necesita prefijo) o RAWG (URL directa) y la forma de la card.
+ * Card con portada arriba (click → detalle del contenido) y footer
+ * con avatar + nota + iconos (click → detalle de la reseña).
  */
 @Composable
 fun FriendActivityCard(
     activity: FriendActivity,
     mediaType: String,
-    onClick: () -> Unit
+    onPosterClick: () -> Unit,
+    onReviewClick: () -> Unit
 ) {
     val isGame = mediaType == "game"
     val cardWidth = if (isGame) 160.dp else 130.dp
@@ -45,40 +45,43 @@ fun FriendActivityCard(
     else TmdbApiService.getImageUrl(activity.posterPath)
 
     Card(
-        modifier = Modifier
-            .width(cardWidth)
-            .clickable { onClick() },
+        modifier = Modifier.width(cardWidth),
         colors = CardDefaults.cardColors(containerColor = MovieBoxSurface),
         shape = RoundedCornerShape(8.dp)
     ) {
-        Box(
+        // Portada
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = activity.title,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(imageHeight)
+                .clickable { onPosterClick() },
+            contentScale = ContentScale.Crop
+        )
+
+        // Footer con info del amigo + reseña
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onReviewClick() }
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = activity.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-            // Avatar del amigo en la esquina inferior izquierda
+            // Avatar
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(6.dp)
-                    .size(28.dp)
+                    .size(22.dp)
                     .clip(CircleShape)
-                    .background(MovieBoxBackground),
+                    .background(MovieBoxSurface),
                 contentAlignment = Alignment.Center
             ) {
                 if (activity.friendPicture != null) {
                     AsyncImage(
                         model = activity.friendPicture,
                         contentDescription = activity.friendName,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
                         contentScale = ContentScale.Crop
                     )
                 } else {
@@ -86,42 +89,80 @@ fun FriendActivityCard(
                         imageVector = Icons.Default.Person,
                         contentDescription = null,
                         tint = MovieBoxOnBackground,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(14.dp)
                     )
                 }
+            }
+
+            // Nota (si existe)
+            if (activity.rating != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = null,
+                        tint = MovieBoxPrimary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = String.format("%.1f", activity.rating),
+                        color = MovieBoxOnBackground,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Icono de texto si tiene comentario
+            if (activity.hasComment) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Comment,
+                    contentDescription = "Tiene comentario",
+                    tint = MovieBoxOnBackground.copy(alpha = 0.7f),
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+
+            // Estrella si es favorito
+            if (activity.isFavorite) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = "Favorito",
+                    tint = MovieBoxPrimary,
+                    modifier = Modifier.size(12.dp)
+                )
             }
         }
     }
 }
 
-/**
- * Fila completa "De tus amigos" lista para usar.
- * Si la lista está vacía, no renderiza nada (el caller decide si mostrar título).
- */
 @Composable
 fun FriendsActivityRow(
     activities: List<FriendActivity>,
     mediaType: String,
-    onItemClick: (mediaId: Int) -> Unit
+    onItemClick: (mediaId: Int) -> Unit,
+    onReviewClick: (activity: FriendActivity) -> Unit
 ) {
     if (activities.isEmpty()) return
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(activities, key = { "${it.friendUserId}_${it.mediaId}_${it.watchedAt}" }) { act ->
+        items(
+            items = activities,
+            key = { "${it.friendUserId}_${it.mediaId}_${it.watchedAt}" }
+        ) { act ->
             FriendActivityCard(
                 activity = act,
                 mediaType = mediaType,
-                onClick = { onItemClick(act.mediaId) }
+                onPosterClick = { onItemClick(act.mediaId) },
+                onReviewClick = { onReviewClick(act) }
             )
         }
     }
 }
 
-/**
- * Mensaje placeholder a mostrar cuando no hay amigos o no han visto nada.
- */
 @Composable
 fun EmptyFriendsActivityHint(text: String) {
     Box(

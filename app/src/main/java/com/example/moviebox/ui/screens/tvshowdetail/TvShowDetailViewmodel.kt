@@ -107,6 +107,7 @@ class TvShowDetailViewModel @Inject constructor(
             val state = _uiState.value
             val title = if (state is TvShowDetailUiState.Success) state.tvShow.name else ""
             val posterPath = if (state is TvShowDetailUiState.Success) state.tvShow.posterPath else null
+            val releaseYear = if (state is TvShowDetailUiState.Success) state.tvShow.firstAirDate.take(4) else ""
 
             reviewRepository.insertReview(
                 ReviewEntity(mediaId = tvShowId, mediaType = "tv", mediaTitle = title, rating = rating, comment = comment)
@@ -114,7 +115,19 @@ class TvShowDetailViewModel @Inject constructor(
             val userId = authManager.getCachedUserId()
             if (userId != null) {
                 try {
-                    socialRepository.syncReview(userId, "tv", tvShowId, title, posterPath, rating, comment)
+                    socialRepository.syncReview(
+                        userId = userId,
+                        userName = authManager.getCachedName().orEmpty(),
+                        userPicture = authManager.getCachedPictureUrl(),
+                        mediaType = "tv",
+                        mediaId = tvShowId,
+                        title = title,
+                        posterPath = posterPath,
+                        releaseYear = releaseYear,
+                        rating = rating,
+                        comment = comment,
+                        isFavorite = _isFavorite.value
+                    )
                 } catch (_: Exception) { }
             }
         }

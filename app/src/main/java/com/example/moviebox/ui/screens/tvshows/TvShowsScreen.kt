@@ -36,6 +36,7 @@ fun TvShowsScreen(
     onTvShowClick: (Int) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToWatchlist: () -> Unit,
+    onReviewClick: (reviewId: String) -> Unit,
     viewModel: TvShowsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -96,7 +97,10 @@ fun TvShowsScreen(
                             FriendsActivityRow(
                                 activities = friendsTvShows,
                                 mediaType = "tv",
-                                onItemClick = onTvShowClick
+                                onItemClick = onTvShowClick,
+                                onReviewClick = { activity ->
+                                    activity.reviewId?.let(onReviewClick)
+                                }
                             )
                         }
                     }

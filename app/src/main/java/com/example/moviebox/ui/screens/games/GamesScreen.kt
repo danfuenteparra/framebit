@@ -38,6 +38,7 @@ fun GamesScreen(
     onGameClick: (Int) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToWatchlist: () -> Unit,
+    onReviewClick: (reviewId: String) -> Unit,
     viewModel: GamesViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -98,7 +99,10 @@ fun GamesScreen(
                             FriendsActivityRow(
                                 activities = friendsGames,
                                 mediaType = "game",
-                                onItemClick = onGameClick
+                                onItemClick = onGameClick,
+                                onReviewClick = { activity ->
+                                    activity.reviewId?.let(onReviewClick)
+                                }
                             )
                         }
                     }

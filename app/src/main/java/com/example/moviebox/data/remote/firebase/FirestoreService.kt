@@ -1,8 +1,11 @@
 package com.example.moviebox.data.remote.firebase
 
 import com.example.moviebox.data.remote.model.FriendActivity
+import com.example.moviebox.data.remote.model.FriendReview
 import com.example.moviebox.data.remote.model.PublicUser
+import com.example.moviebox.data.remote.model.ReviewComment
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -161,42 +164,56 @@ class FirestoreService @Inject constructor(
         return result
     }
 
-    // =================== RESEÑAS (fuente de "actividad de amigos") ===================
+    // =================== RESEÑAS ===================
+
+    private fun reviewRef(authorUserId: String, mediaType: String, mediaId: Int) =
+        firestore.collection("users")
+            .document(authorUserId)
+            .collection("reviews")
+            .document("${mediaType}_$mediaId")
 
     suspend fun upsertReview(
         userId: String,
+        userName: String,
+        userPicture: String?,
         mediaType: String,
         mediaId: Int,
         title: String,
         posterPath: String?,
+        releaseYear: String,
         rating: Float,
-        comment: String
+        comment: String,
+        isFavorite: Boolean
     ) {
-        val docId = "${mediaType}_$mediaId"
-        firestore.collection("users")
-            .document(userId)
-            .collection("reviews")
-            .document(docId)
-            .set(
-                mapOf(
-                    "mediaType" to mediaType,
-                    "mediaId" to mediaId,
-                    "title" to title,
-                    "posterPath" to posterPath,
-                    "rating" to rating,
-                    "comment" to comment,
-                    "createdAt" to System.currentTimeMillis()
-                )
-            ).await()
+        val ref = reviewRef(userId, mediaType, mediaId)
+        // Preservamos contadores existentes al actualizar
+        val existing = ref.get().await()
+        val likesCount = existing.getLong("likesCount") ?: 0L
+        val commentsCount = existing.getLong("commentsCount") ?: 0L
+
+        ref.set(
+            mapOf(
+                "userId" to userId,
+                "userName" to userName,
+                "userPicture" to userPicture,
+                "mediaType" to mediaType,
+                "mediaId" to mediaId,
+                "title" to title,
+                "posterPath" to posterPath,
+                "releaseYear" to releaseYear,
+                "rating" to rating,
+                "comment" to comment,
+                "hasComment" to comment.isNotBlank(),
+                "isFavorite" to isFavorite,
+                "likesCount" to likesCount,
+                "commentsCount" to commentsCount,
+                "createdAt" to System.currentTimeMillis()
+            )
+        ).await()
     }
 
     suspend fun deleteReview(userId: String, mediaType: String, mediaId: Int) {
-        val docId = "${mediaType}_$mediaId"
-        firestore.collection("users")
-            .document(userId)
-            .collection("reviews")
-            .document(docId)
-            .delete().await()
+        reviewRef(userId, mediaType, mediaId).delete().await()
     }
 
     suspend fun getFriendsReviewedItems(
@@ -220,19 +237,191 @@ class FirestoreService @Inject constructor(
 
                 val friend = users[friendId] ?: continue
                 docs.documents.forEach { d ->
+                    val mediaId = (d.getLong("mediaId") ?: 0L).toInt()
+                    val rating = d.getDouble("rating")?.toFloat()
+                    val hasComment = d.getBoolean("hasComment")
+                        ?: !d.getString("comment").isNullOrBlank()
+                    val isFavorite = d.getBoolean("isFavorite") ?: false
+
                     result += FriendActivity(
-                        mediaId = (d.getLong("mediaId") ?: 0L).toInt(),
+                        mediaId = mediaId,
+                        mediaType = mediaType,
                         title = d.getString("title") ?: "",
                         posterPath = d.getString("posterPath"),
+                        releaseYear = d.getString("releaseYear") ?: "",
                         watchedAt = d.getLong("createdAt") ?: 0L,
                         friendUserId = friend.userId,
                         friendName = friend.name,
-                        friendPicture = friend.pictureUrl
+                        friendPicture = friend.pictureUrl,
+                        reviewId = FriendReview.composeId(friend.userId, mediaType, mediaId),
+                        rating = rating,
+                        hasComment = hasComment,
+                        isFavorite = isFavorite
                     )
                 }
             } catch (_: Exception) { }
         }
         return result.sortedByDescending { it.watchedAt }
+    }
+
+    // =================== INTERACCIÓN: LIKES / COMMENTS ===================
+
+    suspend fun getReviewById(
+        authorUserId: String,
+        mediaType: String,
+        mediaId: Int,
+        currentUserId: String
+    ): FriendReview? {
+        return try {
+            val snap = reviewRef(authorUserId, mediaType, mediaId).get().await()
+            if (!snap.exists()) return null
+            val likedByMe = if (currentUserId.isBlank()) false
+            else reviewRef(authorUserId, mediaType, mediaId)
+                .collection("likes").document(currentUserId).get().await().exists()
+            mapReviewDoc(snap, authorUserId, mediaType, mediaId, likedByMe)
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun getCommentsForReview(
+        authorUserId: String,
+        mediaType: String,
+        mediaId: Int
+    ): List<ReviewComment> {
+        return try {
+            reviewRef(authorUserId, mediaType, mediaId)
+                .collection("comments")
+                .orderBy("createdAt", Query.Direction.ASCENDING)
+                .get().await()
+                .documents.mapNotNull { d ->
+                    d.toObject(ReviewComment::class.java)?.copy(commentId = d.id)
+                }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun toggleLike(
+        authorUserId: String,
+        mediaType: String,
+        mediaId: Int,
+        currentUserId: String
+    ): Boolean {
+        val ref = reviewRef(authorUserId, mediaType, mediaId)
+        val likeRef = ref.collection("likes").document(currentUserId)
+        val exists = likeRef.get().await().exists()
+        return if (exists) {
+            likeRef.delete().await()
+            ref.update("likesCount", FieldValue.increment(-1)).await()
+            false
+        } else {
+            likeRef.set(mapOf("createdAt" to System.currentTimeMillis())).await()
+            ref.update("likesCount", FieldValue.increment(1)).await()
+            true
+        }
+    }
+
+    suspend fun addComment(
+        authorUserId: String,
+        mediaType: String,
+        mediaId: Int,
+        commenterUserId: String,
+        commenterName: String,
+        commenterPicture: String?,
+        text: String
+    ) {
+        val ref = reviewRef(authorUserId, mediaType, mediaId)
+        val commentRef = ref.collection("comments").document()
+        commentRef.set(
+            mapOf(
+                "commentId" to commentRef.id,
+                "userId" to commenterUserId,
+                "userName" to commenterName,
+                "userPicture" to commenterPicture,
+                "text" to text,
+                "createdAt" to System.currentTimeMillis()
+            )
+        ).await()
+        ref.update("commentsCount", FieldValue.increment(1)).await()
+    }
+
+    suspend fun deleteComment(
+        authorUserId: String,
+        mediaType: String,
+        mediaId: Int,
+        commentId: String
+    ) {
+        val ref = reviewRef(authorUserId, mediaType, mediaId)
+        ref.collection("comments").document(commentId).delete().await()
+        ref.update("commentsCount", FieldValue.increment(-1)).await()
+    }
+
+    /**
+     * Reseñas de TODOS los usuarios para un media, ordenadas por likes desc.
+     * Requiere índice (collectionGroup) — Firestore te dará un enlace en el primer error.
+     */
+    suspend fun getAllReviewsForMedia(
+        mediaType: String,
+        mediaId: Int,
+        currentUserId: String,
+        limit: Long = 50
+    ): List<FriendReview> {
+        return try {
+            val docs = firestore.collectionGroup("reviews")
+                .whereEqualTo("mediaType", mediaType)
+                .whereEqualTo("mediaId", mediaId)
+                .orderBy("likesCount", Query.Direction.DESCENDING)
+                .orderBy("createdAt", Query.Direction.DESCENDING)
+                .limit(limit)
+                .get().await()
+
+            docs.documents.mapNotNull { d ->
+                val authorUserId = d.getString("userId") ?: return@mapNotNull null
+                val likedByMe = if (currentUserId.isBlank()) false
+                else d.reference.collection("likes")
+                    .document(currentUserId).get().await().exists()
+                mapReviewDoc(d, authorUserId, mediaType, mediaId, likedByMe)
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /** Reseñas SOLO de los amigos sobre un media, ordenadas por likes desc. */
+    suspend fun getFriendsReviewsForMedia(
+        followingIds: List<String>,
+        mediaType: String,
+        mediaId: Int,
+        currentUserId: String
+    ): List<FriendReview> {
+        if (followingIds.isEmpty()) return emptyList()
+        val result = mutableListOf<FriendReview>()
+        for (friendId in followingIds) {
+            getReviewById(friendId, mediaType, mediaId, currentUserId)?.let { result += it }
+        }
+        return result.sortedByDescending { it.likesCount }
+    }
+
+    private fun mapReviewDoc(
+        d: DocumentSnapshot,
+        authorUserId: String,
+        mediaType: String,
+        mediaId: Int,
+        likedByMe: Boolean
+    ): FriendReview {
+        return FriendReview(
+            reviewId = FriendReview.composeId(authorUserId, mediaType, mediaId),
+            userId = authorUserId,
+            userName = d.getString("userName") ?: "",
+            userPicture = d.getString("userPicture"),
+            mediaId = mediaId,
+            mediaType = mediaType,
+            mediaTitle = d.getString("title") ?: "",
+            mediaPosterPath = d.getString("posterPath"),
+            releaseYear = d.getString("releaseYear") ?: "",
+            rating = d.getDouble("rating")?.toFloat(),
+            comment = d.getString("comment") ?: "",
+            isFavorite = d.getBoolean("isFavorite") ?: false,
+            createdAt = d.getLong("createdAt") ?: 0L,
+            likesCount = (d.getLong("likesCount") ?: 0L).toInt(),
+            commentsCount = (d.getLong("commentsCount") ?: 0L).toInt(),
+            likedByMe = likedByMe
+        )
     }
 
     // =================== TOP 3 ===================

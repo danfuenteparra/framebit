@@ -36,6 +36,7 @@ fun HomeScreen(
     onMovieClick: (Int) -> Unit,
     onNavigateToSearch: () -> Unit,
     onNavigateToWatchlist: () -> Unit,
+    onReviewClick: (reviewId: String) -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -98,7 +99,10 @@ fun HomeScreen(
                             FriendsActivityRow(
                                 activities = friendsMovies,
                                 mediaType = "movie",
-                                onItemClick = onMovieClick
+                                onItemClick = onMovieClick,
+                                onReviewClick = { activity ->
+                                    activity.reviewId?.let(onReviewClick)
+                                }
                             )
                         }
                     }

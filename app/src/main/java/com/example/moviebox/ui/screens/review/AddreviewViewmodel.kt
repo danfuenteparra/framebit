@@ -36,6 +36,7 @@ data class SelectedMedia(
     val id: Int,
     val title: String,
     val posterUrl: String?,
+    val releaseYear: String,
     val type: ReviewMediaType
 )
 
@@ -109,6 +110,7 @@ class AddReviewViewModel @Inject constructor(
             id = movie.id,
             title = movie.title,
             posterUrl = movie.posterPath,
+            releaseYear = movie.releaseDate.take(4),
             type = ReviewMediaType.MOVIE
         )
     }
@@ -118,6 +120,7 @@ class AddReviewViewModel @Inject constructor(
             id = tvShow.id,
             title = tvShow.name,
             posterUrl = tvShow.posterPath,
+            releaseYear = tvShow.firstAirDate.take(4),
             type = ReviewMediaType.TV
         )
     }
@@ -127,6 +130,7 @@ class AddReviewViewModel @Inject constructor(
             id = game.id,
             title = game.name,
             posterUrl = game.backgroundImage,
+            releaseYear = game.released?.take(4) ?: "",
             type = ReviewMediaType.GAME
         )
     }
@@ -154,18 +158,22 @@ class AddReviewViewModel @Inject constructor(
                     comment = comment
                 )
             )
-            // Sincronizar a Firestore para que aparezca en la fila "De tus amigos"
+            // Sincronizar a Firestore
             val userId = authManager.getCachedUserId()
             if (userId != null) {
                 try {
                     socialRepository.syncReview(
                         userId = userId,
+                        userName = authManager.getCachedName().orEmpty(),
+                        userPicture = authManager.getCachedPictureUrl(),
                         mediaType = mediaTypeStr,
                         mediaId = sel.id,
                         title = sel.title,
                         posterPath = sel.posterUrl,
+                        releaseYear = sel.releaseYear,
                         rating = rating,
-                        comment = comment
+                        comment = comment,
+                        isFavorite = false
                     )
                 } catch (_: Exception) { }
             }
