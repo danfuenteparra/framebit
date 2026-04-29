@@ -9,6 +9,8 @@ import com.example.moviebox.data.local.entity.TopItemEntity
 import com.example.moviebox.data.remote.dto.GameDto
 import com.example.moviebox.data.remote.dto.MovieDto
 import com.example.moviebox.data.remote.dto.TvShowDto
+import com.example.moviebox.data.remote.model.LibraryEntry
+import com.example.moviebox.data.remote.model.PublicUser
 import com.example.moviebox.data.repository.GameRepository
 import com.example.moviebox.data.repository.MovieRepository
 import com.example.moviebox.data.repository.SocialRepository
@@ -42,7 +44,21 @@ class ProfileViewModel @Inject constructor(
     private val _topGames = MutableStateFlow<List<TopItemEntity?>>(listOf(null, null, null))
     val topGames: StateFlow<List<TopItemEntity?>> = _topGames
 
-    // Contadores sociales
+    // Datos sociales del usuario actual (bio, links, contadores, foto custom)
+    private val _publicUser = MutableStateFlow<PublicUser?>(null)
+    val publicUser: StateFlow<PublicUser?> = _publicUser
+
+    // Vistas (de Firestore)
+    private val _watchedMovies = MutableStateFlow<List<LibraryEntry>>(emptyList())
+    val watchedMovies: StateFlow<List<LibraryEntry>> = _watchedMovies
+
+    private val _watchedTvShows = MutableStateFlow<List<LibraryEntry>>(emptyList())
+    val watchedTvShows: StateFlow<List<LibraryEntry>> = _watchedTvShows
+
+    private val _watchedGames = MutableStateFlow<List<LibraryEntry>>(emptyList())
+    val watchedGames: StateFlow<List<LibraryEntry>> = _watchedGames
+
+    // Contadores sociales (atajos cómodos para la UI)
     private val _followersCount = MutableStateFlow(0)
     val followersCount: StateFlow<Int> = _followersCount
 
@@ -74,7 +90,7 @@ class ProfileViewModel @Inject constructor(
                     currentUserId = profile.getId() ?: ""
                     _uiState.value = ProfileUiState.Success(profile)
                     loadTopItems()
-                    refreshSocialCounts()
+                    refreshAll()
                 } else {
                     _uiState.value = ProfileUiState.Error("No hay sesión activa")
                 }
@@ -84,19 +100,30 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    /** Llamar al volver a la pantalla para refrescar contadores. */
-    fun refreshSocialCounts() {
+    /** Refresca PublicUser (bio/links/foto/contadores) y la library de vistos. */
+    fun refreshAll() {
         if (currentUserId.isBlank()) return
         viewModelScope.launch {
             try {
                 val user = socialRepository.getUser(currentUserId)
                 if (user != null) {
+                    _publicUser.value = user
                     _followersCount.value = user.followersCount
                     _followingCount.value = user.followingCount
                 }
             } catch (_: Exception) { }
+            try {
+                val all = socialRepository.getLibrary(currentUserId)
+                val watched = all.filter { it.status == "watched" }
+                _watchedMovies.value = watched.filter { it.mediaType == "movie" }
+                _watchedTvShows.value = watched.filter { it.mediaType == "tv" }
+                _watchedGames.value = watched.filter { it.mediaType == "game" }
+            } catch (_: Exception) { }
         }
     }
+
+    /** Llamar al volver a la pantalla para refrescar contadores. */
+    fun refreshSocialCounts() = refreshAll()
 
     fun getCurrentUserId(): String = currentUserId
 

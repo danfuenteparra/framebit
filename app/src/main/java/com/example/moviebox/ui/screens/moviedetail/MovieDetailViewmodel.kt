@@ -14,7 +14,6 @@ import com.example.moviebox.data.repository.SocialRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -112,20 +111,39 @@ class MovieDetailViewModel @Inject constructor(
     fun addReview(rating: Float, comment: String) {
         viewModelScope.launch {
             val state = _uiState.value
-            val title = if (state is MovieDetailUiState.Success) state.movie.title else ""
-            val posterPath = if (state is MovieDetailUiState.Success) state.movie.posterPath else null
-            val releaseYear = if (state is MovieDetailUiState.Success) state.movie.releaseDate.take(4) else ""
+            val movie = (state as? MovieDetailUiState.Success)?.movie
+            val title = movie?.title ?: ""
+            val posterPath = movie?.posterPath
+            val releaseYear = movie?.releaseDate?.take(4) ?: ""
 
+            // 1) Guardar en Room (offline)
             reviewRepository.insertReview(
-                ReviewEntity(mediaId = movieId, mediaType = "movie", mediaTitle = title, rating = rating, comment = comment)
+                ReviewEntity(
+                    mediaId = movieId,
+                    mediaType = "movie",
+                    mediaTitle = title,
+                    rating = rating,
+                    comment = comment
+                )
             )
-            // Sincronizar reseña a Firestore
+
+            // 2) Marcar como visto localmente (auto)
+            ensureInRoom()
+            movieRepository.toggleWatched(movieId, true)
+            _isWatched.value = true
+            if (_isWatchlisted.value) {
+                movieRepository.toggleWatchlisted(movieId, false)
+                _isWatchlisted.value = false
+            }
+
+            // 3) Sincronizar con Firestore (review + library auto-watched dentro de upsertReview)
             val userId = authManager.getCachedUserId()
-            if (userId != null) {
+            if (!userId.isNullOrBlank()) {
                 try {
+                    socialRepository.ensureSignedIn()
                     socialRepository.syncReview(
                         userId = userId,
-                        userName = authManager.getCachedName().orEmpty(),
+                        userName = authManager.getCachedName() ?: "",
                         userPicture = authManager.getCachedPictureUrl(),
                         mediaType = "movie",
                         mediaId = movieId,
@@ -144,14 +162,12 @@ class MovieDetailViewModel @Inject constructor(
     fun deleteReview(reviewId: Int) {
         viewModelScope.launch {
             reviewRepository.deleteReviewById(reviewId)
-            val remaining = reviewRepository.getReviewsForMedia(movieId, "movie").first()
-            if (remaining.isEmpty()) {
-                val userId = authManager.getCachedUserId()
-                if (userId != null) {
-                    try {
-                        socialRepository.deleteReviewRemote(userId, "movie", movieId)
-                    } catch (_: Exception) { }
-                }
+            // Sync remoto: borrar review pero mantener "visto" en library
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.deleteReviewRemote(userId, "movie", movieId)
+                } catch (_: Exception) { }
             }
         }
     }
@@ -161,7 +177,18 @@ class MovieDetailViewModel @Inject constructor(
             val state = _uiState.value
             if (state is MovieDetailUiState.Success) {
                 val d = state.movie
-                movieRepository.insertMovie(MovieEntity(id = d.id, title = d.title, overview = d.overview, posterPath = d.posterPath, backdropPath = d.backdropPath, releaseDate = d.releaseDate, voteAverage = d.voteAverage, voteCount = d.voteCount))
+                movieRepository.insertMovie(
+                    MovieEntity(
+                        id = d.id,
+                        title = d.title,
+                        overview = d.overview,
+                        posterPath = d.posterPath,
+                        backdropPath = d.backdropPath,
+                        releaseDate = d.releaseDate,
+                        voteAverage = d.voteAverage,
+                        voteCount = d.voteCount
+                    )
+                )
             }
         }
     }
@@ -170,7 +197,23 @@ class MovieDetailViewModel @Inject constructor(
         val existing = movieRepository.getMovieById(movieId)
         if (existing != null && !existing.isWatchlisted && !existing.isFavorite && !existing.isWatched) {
             movieRepository.deleteMovie(movieId)
+            // Sync remoto: borrar entrada de library (perdió todos los flags)
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.removeLibraryEntry(userId, "movie", movieId)
+                } catch (_: Exception) { }
+            }
         }
+    }
+
+    private fun mediaMeta(): Triple<String, String?, String> {
+        val movie = (_uiState.value as? MovieDetailUiState.Success)?.movie
+        return Triple(
+            movie?.title ?: "",
+            movie?.posterPath,
+            movie?.releaseDate?.take(4) ?: ""
+        )
     }
 
     fun toggleWatchlisted() {
@@ -179,6 +222,25 @@ class MovieDetailViewModel @Inject constructor(
             val newVal = !_isWatchlisted.value
             movieRepository.toggleWatchlisted(movieId, newVal)
             _isWatchlisted.value = newVal
+
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.ensureSignedIn()
+                    if (newVal) {
+                        val (title, poster, year) = mediaMeta()
+                        socialRepository.setLibraryStatus(
+                            userId, "movie", movieId,
+                            status = "watchlist",
+                            isFavorite = _isFavorite.value,
+                            title = title, posterPath = poster, releaseYear = year
+                        )
+                    } else if (!_isWatched.value && !_isFavorite.value) {
+                        socialRepository.removeLibraryEntry(userId, "movie", movieId)
+                    }
+                } catch (_: Exception) { }
+            }
+
             if (!newVal) cleanupIfOrphan()
         }
     }
@@ -189,6 +251,23 @@ class MovieDetailViewModel @Inject constructor(
             val newVal = !_isFavorite.value
             movieRepository.toggleFavorite(movieId, newVal)
             _isFavorite.value = newVal
+
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.ensureSignedIn()
+                    val (title, poster, year) = mediaMeta()
+                    socialRepository.setLibraryFavorite(
+                        userId, "movie", movieId,
+                        isFavorite = newVal,
+                        title = title, posterPath = poster, releaseYear = year
+                    )
+                    if (!newVal && !_isWatched.value && !_isWatchlisted.value) {
+                        socialRepository.removeLibraryEntry(userId, "movie", movieId)
+                    }
+                } catch (_: Exception) { }
+            }
+
             if (!newVal) cleanupIfOrphan()
         }
     }
@@ -199,10 +278,40 @@ class MovieDetailViewModel @Inject constructor(
             val newVal = !_isWatched.value
             movieRepository.toggleWatched(movieId, newVal)
             _isWatched.value = newVal
+            // Al marcar como vista, quitar de watchlist
             if (newVal && _isWatchlisted.value) {
                 movieRepository.toggleWatchlisted(movieId, false)
                 _isWatchlisted.value = false
             }
+
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.ensureSignedIn()
+                    if (newVal) {
+                        val (title, poster, year) = mediaMeta()
+                        socialRepository.setLibraryStatus(
+                            userId, "movie", movieId,
+                            status = "watched",
+                            isFavorite = _isFavorite.value,
+                            title = title, posterPath = poster, releaseYear = year
+                        )
+                    } else if (!_isFavorite.value) {
+                        // Si no es favorita y se desmarca visto, quitar entrada
+                        socialRepository.removeLibraryEntry(userId, "movie", movieId)
+                    } else {
+                        // Mantener entrada (es favorita) pero pasar a watchlist
+                        val (title, poster, year) = mediaMeta()
+                        socialRepository.setLibraryStatus(
+                            userId, "movie", movieId,
+                            status = "watchlist",
+                            isFavorite = true,
+                            title = title, posterPath = poster, releaseYear = year
+                        )
+                    }
+                } catch (_: Exception) { }
+            }
+
             if (!newVal) cleanupIfOrphan()
         }
     }

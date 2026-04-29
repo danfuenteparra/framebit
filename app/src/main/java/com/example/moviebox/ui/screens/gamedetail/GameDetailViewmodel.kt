@@ -14,7 +14,6 @@ import com.example.moviebox.data.repository.SocialRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -91,19 +90,39 @@ class GameDetailViewModel @Inject constructor(
     fun addReview(rating: Float, comment: String) {
         viewModelScope.launch {
             val state = _uiState.value
-            val title = if (state is GameDetailUiState.Success) state.game.name else ""
-            val posterPath = if (state is GameDetailUiState.Success) state.game.backgroundImage else null
-            val releaseYear = if (state is GameDetailUiState.Success) state.game.released?.take(4) ?: "" else ""
+            val game = (state as? GameDetailUiState.Success)?.game
+            val title = game?.name ?: ""
+            val posterPath = game?.backgroundImage
+            val releaseYear = game?.released?.take(4) ?: ""
 
+            // 1) Guardar en Room
             reviewRepository.insertReview(
-                ReviewEntity(mediaId = gameId, mediaType = "game", mediaTitle = title, rating = rating, comment = comment)
+                ReviewEntity(
+                    mediaId = gameId,
+                    mediaType = "game",
+                    mediaTitle = title,
+                    rating = rating,
+                    comment = comment
+                )
             )
+
+            // 2) Auto-marcar como jugado
+            ensureInRoom()
+            gameRepository.togglePlayed(gameId, true)
+            _isPlayed.value = true
+            if (_isWatchlisted.value) {
+                gameRepository.toggleWatchlisted(gameId, false)
+                _isWatchlisted.value = false
+            }
+
+            // 3) Sincronizar con Firestore
             val userId = authManager.getCachedUserId()
-            if (userId != null) {
+            if (!userId.isNullOrBlank()) {
                 try {
+                    socialRepository.ensureSignedIn()
                     socialRepository.syncReview(
                         userId = userId,
-                        userName = authManager.getCachedName().orEmpty(),
+                        userName = authManager.getCachedName() ?: "",
                         userPicture = authManager.getCachedPictureUrl(),
                         mediaType = "game",
                         mediaId = gameId,
@@ -122,14 +141,11 @@ class GameDetailViewModel @Inject constructor(
     fun deleteReview(reviewId: Int) {
         viewModelScope.launch {
             reviewRepository.deleteReviewById(reviewId)
-            val remaining = reviewRepository.getReviewsForMedia(gameId, "game").first()
-            if (remaining.isEmpty()) {
-                val userId = authManager.getCachedUserId()
-                if (userId != null) {
-                    try {
-                        socialRepository.deleteReviewRemote(userId, "game", gameId)
-                    } catch (_: Exception) { }
-                }
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.deleteReviewRemote(userId, "game", gameId)
+                } catch (_: Exception) { }
             }
         }
     }
@@ -141,8 +157,13 @@ class GameDetailViewModel @Inject constructor(
                 val d = state.game
                 gameRepository.insertGame(
                     GameEntity(
-                        id = d.id, name = d.name, backgroundImage = d.backgroundImage, released = d.released,
-                        rating = d.rating, ratingsCount = d.ratingsCount, metacritic = d.metacritic,
+                        id = d.id,
+                        name = d.name,
+                        backgroundImage = d.backgroundImage,
+                        released = d.released,
+                        rating = d.rating,
+                        ratingsCount = d.ratingsCount,
+                        metacritic = d.metacritic,
                         genres = d.genres?.joinToString(", ") { it.name },
                         platforms = d.platforms?.joinToString(", ") { it.platform.name }
                     )
@@ -155,7 +176,22 @@ class GameDetailViewModel @Inject constructor(
         val existing = gameRepository.getGameById(gameId)
         if (existing != null && !existing.isWatchlisted && !existing.isFavorite && !existing.isPlayed) {
             gameRepository.deleteGame(gameId)
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.removeLibraryEntry(userId, "game", gameId)
+                } catch (_: Exception) { }
+            }
         }
+    }
+
+    private fun mediaMeta(): Triple<String, String?, String> {
+        val game = (_uiState.value as? GameDetailUiState.Success)?.game
+        return Triple(
+            game?.name ?: "",
+            game?.backgroundImage,
+            game?.released?.take(4) ?: ""
+        )
     }
 
     fun toggleWatchlisted() {
@@ -164,6 +200,25 @@ class GameDetailViewModel @Inject constructor(
             val newVal = !_isWatchlisted.value
             gameRepository.toggleWatchlisted(gameId, newVal)
             _isWatchlisted.value = newVal
+
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.ensureSignedIn()
+                    if (newVal) {
+                        val (title, poster, year) = mediaMeta()
+                        socialRepository.setLibraryStatus(
+                            userId, "game", gameId,
+                            status = "watchlist",
+                            isFavorite = _isFavorite.value,
+                            title = title, posterPath = poster, releaseYear = year
+                        )
+                    } else if (!_isPlayed.value && !_isFavorite.value) {
+                        socialRepository.removeLibraryEntry(userId, "game", gameId)
+                    }
+                } catch (_: Exception) { }
+            }
+
             if (!newVal) cleanupIfOrphan()
         }
     }
@@ -174,6 +229,23 @@ class GameDetailViewModel @Inject constructor(
             val newVal = !_isFavorite.value
             gameRepository.toggleFavorite(gameId, newVal)
             _isFavorite.value = newVal
+
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.ensureSignedIn()
+                    val (title, poster, year) = mediaMeta()
+                    socialRepository.setLibraryFavorite(
+                        userId, "game", gameId,
+                        isFavorite = newVal,
+                        title = title, posterPath = poster, releaseYear = year
+                    )
+                    if (!newVal && !_isPlayed.value && !_isWatchlisted.value) {
+                        socialRepository.removeLibraryEntry(userId, "game", gameId)
+                    }
+                } catch (_: Exception) { }
+            }
+
             if (!newVal) cleanupIfOrphan()
         }
     }
@@ -188,6 +260,33 @@ class GameDetailViewModel @Inject constructor(
                 gameRepository.toggleWatchlisted(gameId, false)
                 _isWatchlisted.value = false
             }
+
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.ensureSignedIn()
+                    if (newVal) {
+                        val (title, poster, year) = mediaMeta()
+                        socialRepository.setLibraryStatus(
+                            userId, "game", gameId,
+                            status = "watched",
+                            isFavorite = _isFavorite.value,
+                            title = title, posterPath = poster, releaseYear = year
+                        )
+                    } else if (!_isFavorite.value) {
+                        socialRepository.removeLibraryEntry(userId, "game", gameId)
+                    } else {
+                        val (title, poster, year) = mediaMeta()
+                        socialRepository.setLibraryStatus(
+                            userId, "game", gameId,
+                            status = "watchlist",
+                            isFavorite = true,
+                            title = title, posterPath = poster, releaseYear = year
+                        )
+                    }
+                } catch (_: Exception) { }
+            }
+
             if (!newVal) cleanupIfOrphan()
         }
     }

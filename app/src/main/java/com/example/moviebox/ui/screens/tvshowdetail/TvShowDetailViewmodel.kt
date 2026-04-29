@@ -14,7 +14,6 @@ import com.example.moviebox.data.repository.TvShowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -105,19 +104,39 @@ class TvShowDetailViewModel @Inject constructor(
     fun addReview(rating: Float, comment: String) {
         viewModelScope.launch {
             val state = _uiState.value
-            val title = if (state is TvShowDetailUiState.Success) state.tvShow.name else ""
-            val posterPath = if (state is TvShowDetailUiState.Success) state.tvShow.posterPath else null
-            val releaseYear = if (state is TvShowDetailUiState.Success) state.tvShow.firstAirDate.take(4) else ""
+            val tv = (state as? TvShowDetailUiState.Success)?.tvShow
+            val title = tv?.name ?: ""
+            val posterPath = tv?.posterPath
+            val releaseYear = tv?.firstAirDate?.take(4) ?: ""
 
+            // 1) Guardar en Room
             reviewRepository.insertReview(
-                ReviewEntity(mediaId = tvShowId, mediaType = "tv", mediaTitle = title, rating = rating, comment = comment)
+                ReviewEntity(
+                    mediaId = tvShowId,
+                    mediaType = "tv",
+                    mediaTitle = title,
+                    rating = rating,
+                    comment = comment
+                )
             )
+
+            // 2) Auto-marcar como vista
+            ensureInRoom()
+            tvShowRepository.toggleWatched(tvShowId, true)
+            _isWatched.value = true
+            if (_isWatchlisted.value) {
+                tvShowRepository.toggleWatchlisted(tvShowId, false)
+                _isWatchlisted.value = false
+            }
+
+            // 3) Sincronizar con Firestore
             val userId = authManager.getCachedUserId()
-            if (userId != null) {
+            if (!userId.isNullOrBlank()) {
                 try {
+                    socialRepository.ensureSignedIn()
                     socialRepository.syncReview(
                         userId = userId,
-                        userName = authManager.getCachedName().orEmpty(),
+                        userName = authManager.getCachedName() ?: "",
                         userPicture = authManager.getCachedPictureUrl(),
                         mediaType = "tv",
                         mediaId = tvShowId,
@@ -136,14 +155,11 @@ class TvShowDetailViewModel @Inject constructor(
     fun deleteReview(reviewId: Int) {
         viewModelScope.launch {
             reviewRepository.deleteReviewById(reviewId)
-            val remaining = reviewRepository.getReviewsForMedia(tvShowId, "tv").first()
-            if (remaining.isEmpty()) {
-                val userId = authManager.getCachedUserId()
-                if (userId != null) {
-                    try {
-                        socialRepository.deleteReviewRemote(userId, "tv", tvShowId)
-                    } catch (_: Exception) { }
-                }
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.deleteReviewRemote(userId, "tv", tvShowId)
+                } catch (_: Exception) { }
             }
         }
     }
@@ -153,7 +169,18 @@ class TvShowDetailViewModel @Inject constructor(
             val state = _uiState.value
             if (state is TvShowDetailUiState.Success) {
                 val d = state.tvShow
-                tvShowRepository.insertTvShow(TvShowEntity(id = d.id, name = d.name, overview = d.overview, posterPath = d.posterPath, backdropPath = d.backdropPath, firstAirDate = d.firstAirDate, voteAverage = d.voteAverage, voteCount = d.voteCount))
+                tvShowRepository.insertTvShow(
+                    TvShowEntity(
+                        id = d.id,
+                        name = d.name,
+                        overview = d.overview,
+                        posterPath = d.posterPath,
+                        backdropPath = d.backdropPath,
+                        firstAirDate = d.firstAirDate,
+                        voteAverage = d.voteAverage,
+                        voteCount = d.voteCount
+                    )
+                )
             }
         }
     }
@@ -162,7 +189,22 @@ class TvShowDetailViewModel @Inject constructor(
         val existing = tvShowRepository.getTvShowById(tvShowId)
         if (existing != null && !existing.isWatchlisted && !existing.isFavorite && !existing.isWatched) {
             tvShowRepository.deleteTvShow(tvShowId)
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.removeLibraryEntry(userId, "tv", tvShowId)
+                } catch (_: Exception) { }
+            }
         }
+    }
+
+    private fun mediaMeta(): Triple<String, String?, String> {
+        val tv = (_uiState.value as? TvShowDetailUiState.Success)?.tvShow
+        return Triple(
+            tv?.name ?: "",
+            tv?.posterPath,
+            tv?.firstAirDate?.take(4) ?: ""
+        )
     }
 
     fun toggleWatchlisted() {
@@ -171,6 +213,25 @@ class TvShowDetailViewModel @Inject constructor(
             val newVal = !_isWatchlisted.value
             tvShowRepository.toggleWatchlisted(tvShowId, newVal)
             _isWatchlisted.value = newVal
+
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.ensureSignedIn()
+                    if (newVal) {
+                        val (title, poster, year) = mediaMeta()
+                        socialRepository.setLibraryStatus(
+                            userId, "tv", tvShowId,
+                            status = "watchlist",
+                            isFavorite = _isFavorite.value,
+                            title = title, posterPath = poster, releaseYear = year
+                        )
+                    } else if (!_isWatched.value && !_isFavorite.value) {
+                        socialRepository.removeLibraryEntry(userId, "tv", tvShowId)
+                    }
+                } catch (_: Exception) { }
+            }
+
             if (!newVal) cleanupIfOrphan()
         }
     }
@@ -181,6 +242,23 @@ class TvShowDetailViewModel @Inject constructor(
             val newVal = !_isFavorite.value
             tvShowRepository.toggleFavorite(tvShowId, newVal)
             _isFavorite.value = newVal
+
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.ensureSignedIn()
+                    val (title, poster, year) = mediaMeta()
+                    socialRepository.setLibraryFavorite(
+                        userId, "tv", tvShowId,
+                        isFavorite = newVal,
+                        title = title, posterPath = poster, releaseYear = year
+                    )
+                    if (!newVal && !_isWatched.value && !_isWatchlisted.value) {
+                        socialRepository.removeLibraryEntry(userId, "tv", tvShowId)
+                    }
+                } catch (_: Exception) { }
+            }
+
             if (!newVal) cleanupIfOrphan()
         }
     }
@@ -195,6 +273,33 @@ class TvShowDetailViewModel @Inject constructor(
                 tvShowRepository.toggleWatchlisted(tvShowId, false)
                 _isWatchlisted.value = false
             }
+
+            val userId = authManager.getCachedUserId()
+            if (!userId.isNullOrBlank()) {
+                try {
+                    socialRepository.ensureSignedIn()
+                    if (newVal) {
+                        val (title, poster, year) = mediaMeta()
+                        socialRepository.setLibraryStatus(
+                            userId, "tv", tvShowId,
+                            status = "watched",
+                            isFavorite = _isFavorite.value,
+                            title = title, posterPath = poster, releaseYear = year
+                        )
+                    } else if (!_isFavorite.value) {
+                        socialRepository.removeLibraryEntry(userId, "tv", tvShowId)
+                    } else {
+                        val (title, poster, year) = mediaMeta()
+                        socialRepository.setLibraryStatus(
+                            userId, "tv", tvShowId,
+                            status = "watchlist",
+                            isFavorite = true,
+                            title = title, posterPath = poster, releaseYear = year
+                        )
+                    }
+                } catch (_: Exception) { }
+            }
+
             if (!newVal) cleanupIfOrphan()
         }
     }

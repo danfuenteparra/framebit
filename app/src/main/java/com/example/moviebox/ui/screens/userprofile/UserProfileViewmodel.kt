@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.moviebox.auth.AuthManager
+import com.example.moviebox.data.remote.model.LibraryEntry
 import com.example.moviebox.data.remote.model.PublicUser
 import com.example.moviebox.data.repository.SocialRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -44,6 +45,15 @@ class UserProfileViewModel @Inject constructor(
     private val _topGames = MutableStateFlow<List<TopItemDisplay?>>(listOf(null, null, null))
     val topGames: StateFlow<List<TopItemDisplay?>> = _topGames
 
+    private val _watchedMovies = MutableStateFlow<List<LibraryEntry>>(emptyList())
+    val watchedMovies: StateFlow<List<LibraryEntry>> = _watchedMovies
+
+    private val _watchedTvShows = MutableStateFlow<List<LibraryEntry>>(emptyList())
+    val watchedTvShows: StateFlow<List<LibraryEntry>> = _watchedTvShows
+
+    private val _watchedGames = MutableStateFlow<List<LibraryEntry>>(emptyList())
+    val watchedGames: StateFlow<List<LibraryEntry>> = _watchedGames
+
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
 
@@ -68,6 +78,7 @@ class UserProfileViewModel @Inject constructor(
                     _isFollowing.value = socialRepository.isFollowing(myId, targetUserId)
                 }
                 loadTopItems()
+                loadLibrary()
             } catch (_: Exception) { }
             finally {
                 _loading.value = false
@@ -107,6 +118,18 @@ class UserProfileViewModel @Inject constructor(
         _topMovies.value = movies
         _topTvShows.value = tvShows
         _topGames.value = games
+    }
+
+    private suspend fun loadLibrary() {
+        val all = try {
+            socialRepository.getLibrary(targetUserId)
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val watched = all.filter { it.status == "watched" }
+        _watchedMovies.value = watched.filter { it.mediaType == "movie" }
+        _watchedTvShows.value = watched.filter { it.mediaType == "tv" }
+        _watchedGames.value = watched.filter { it.mediaType == "game" }
     }
 
     fun toggleFollow() {

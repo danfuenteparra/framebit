@@ -27,9 +27,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.moviebox.ui.screens.review.AddReviewScreen
+import com.example.moviebox.ui.screens.editprofile.EditProfileScreen
 import com.example.moviebox.ui.screens.games.GamesScreen
 import com.example.moviebox.ui.screens.gamedetail.GameDetailScreen
-import com.example.moviebox.ui.screens.home.HomeScreen
+import com.example.moviebox.ui.screens.moviedetail.home.HomeScreen
 import com.example.moviebox.ui.screens.login.LoginScreen
 import com.example.moviebox.ui.screens.moviedetail.MovieDetailScreen
 import com.example.moviebox.ui.screens.profile.ProfileScreen
@@ -37,7 +38,7 @@ import com.example.moviebox.ui.screens.search.SearchScreen
 import com.example.moviebox.ui.screens.tvshowdetail.TvShowDetailScreen
 import com.example.moviebox.ui.screens.tvshows.TvShowsScreen
 import com.example.moviebox.ui.screens.userlist.UserListScreen
-import com.example.moviebox.ui.userprofile.UserProfileScreen
+import com.example.moviebox.ui.screens.userprofile.UserProfileScreen
 import com.example.moviebox.ui.screens.usersearch.UserSearchScreen
 import com.example.moviebox.ui.screens.watchlist.WatchlistScreen
 import com.example.moviebox.ui.screens.reviewdetail.ReviewDetailScreen
@@ -161,7 +162,18 @@ fun AppNavigation(
                     onNavigateToFollowing = { id ->
                         navController.navigate(Screen.UserList.createRoute(id, "following"))
                     },
-                    onNavigateToUserSearch = { navController.navigate(Screen.UserSearch.route) }
+                    onNavigateToUserSearch = { navController.navigate(Screen.UserSearch.route) },
+                    onNavigateToEditProfile = { navController.navigate(Screen.EditProfile.route) },
+                    onMovieClick = { id -> navController.navigate(Screen.MovieDetail.createRoute(id)) },
+                    onTvShowClick = { id -> navController.navigate(Screen.TvShowDetail.createRoute(id)) },
+                    onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) }
+                )
+            }
+
+            composable(route = Screen.EditProfile.route) {
+                EditProfileScreen(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() }
                 )
             }
 
@@ -183,7 +195,10 @@ fun AppNavigation(
                     },
                     onNavigateToFollowing = { id ->
                         navController.navigate(Screen.UserList.createRoute(id, "following"))
-                    }
+                    },
+                    onMovieClick = { id -> navController.navigate(Screen.MovieDetail.createRoute(id)) },
+                    onTvShowClick = { id -> navController.navigate(Screen.TvShowDetail.createRoute(id)) },
+                    onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) }
                 )
             }
 

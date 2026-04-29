@@ -1,13 +1,18 @@
-package com.example.moviebox.ui.userprofile
+package com.example.moviebox.ui.screens.userprofile
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PersonRemove
@@ -17,14 +22,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.api.TmdbApiService
+import com.example.moviebox.data.remote.model.LibraryEntry
 import com.example.moviebox.ui.screens.userprofile.TopItemDisplay
 import com.example.moviebox.ui.screens.userprofile.UserProfileViewModel
 import com.example.moviebox.ui.theme.MovieBoxBackground
@@ -38,6 +47,9 @@ fun UserProfileScreen(
     onBack: () -> Unit,
     onNavigateToFollowers: (userId: String) -> Unit,
     onNavigateToFollowing: (userId: String) -> Unit,
+    onMovieClick: (Int) -> Unit,
+    onTvShowClick: (Int) -> Unit,
+    onGameClick: (Int) -> Unit,
     viewModel: UserProfileViewModel = hiltViewModel()
 ) {
     val user by viewModel.user.collectAsStateWithLifecycle()
@@ -46,6 +58,18 @@ fun UserProfileScreen(
     val topMovies by viewModel.topMovies.collectAsStateWithLifecycle()
     val topTvShows by viewModel.topTvShows.collectAsStateWithLifecycle()
     val topGames by viewModel.topGames.collectAsStateWithLifecycle()
+    val watchedMovies by viewModel.watchedMovies.collectAsStateWithLifecycle()
+    val watchedTvShows by viewModel.watchedTvShows.collectAsStateWithLifecycle()
+    val watchedGames by viewModel.watchedGames.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    fun navigateToMedia(mediaType: String, mediaId: Int) {
+        when (mediaType) {
+            "movie" -> onMovieClick(mediaId)
+            "tv" -> onTvShowClick(mediaId)
+            "game" -> onGameClick(mediaId)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -104,6 +128,55 @@ fun UserProfileScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
             Text(u.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
+
+            // Bio
+            if (u.bio.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    u.bio,
+                    fontSize = 14.sp,
+                    color = MovieBoxOnBackground.copy(alpha = 0.8f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
+
+            // Enlaces
+            if (u.links.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                ) {
+                    u.links.forEach { link ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.clickable {
+                                runCatching {
+                                    val normalized = if (!link.startsWith("http")) "https://$link" else link
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, normalized.toUri()))
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Link,
+                                contentDescription = null,
+                                tint = MovieBoxPrimary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                link,
+                                fontSize = 13.sp,
+                                color = MovieBoxPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -165,11 +238,32 @@ fun UserProfileScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            ReadOnlyTopRow("Películas", topMovies, "movie")
+            ClickableTopRow("Películas", topMovies, "movie") { id -> navigateToMedia("movie", id) }
             Spacer(modifier = Modifier.height(16.dp))
-            ReadOnlyTopRow("Series", topTvShows, "tv")
+            ClickableTopRow("Series", topTvShows, "tv") { id -> navigateToMedia("tv", id) }
             Spacer(modifier = Modifier.height(16.dp))
-            ReadOnlyTopRow("Juegos", topGames, "game")
+            ClickableTopRow("Juegos", topGames, "game") { id -> navigateToMedia("game", id) }
+
+            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider(color = MovieBoxSurface, modifier = Modifier.padding(horizontal = 16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Vistas",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = MovieBoxOnBackground,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                textAlign = TextAlign.Start
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            WatchedRow("Películas", watchedMovies, "movie") { id -> navigateToMedia("movie", id) }
+            Spacer(modifier = Modifier.height(12.dp))
+            WatchedRow("Series", watchedTvShows, "tv") { id -> navigateToMedia("tv", id) }
+            Spacer(modifier = Modifier.height(12.dp))
+            WatchedRow("Juegos", watchedGames, "game") { id -> navigateToMedia("game", id) }
 
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -177,10 +271,11 @@ fun UserProfileScreen(
 }
 
 @Composable
-private fun ReadOnlyTopRow(
+private fun ClickableTopRow(
     label: String,
     items: List<TopItemDisplay?>,
-    mediaType: String
+    mediaType: String,
+    onItemClick: (Int) -> Unit
 ) {
     val aspectRatio = if (mediaType == "game") 16f / 9f else 2f / 3f
 
@@ -204,7 +299,11 @@ private fun ReadOnlyTopRow(
                 Card(
                     modifier = Modifier
                         .weight(1f)
-                        .aspectRatio(aspectRatio),
+                        .aspectRatio(aspectRatio)
+                        .then(
+                            if (item != null) Modifier.clickable { onItemClick(item.mediaId) }
+                            else Modifier
+                        ),
                     shape = RoundedCornerShape(8.dp),
                     colors = CardDefaults.cardColors(containerColor = MovieBoxSurface.copy(alpha = 0.5f))
                 ) {
@@ -222,6 +321,64 @@ private fun ReadOnlyTopRow(
                             Text("-", color = MovieBoxOnBackground.copy(alpha = 0.3f), fontSize = 24.sp)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WatchedRow(
+    label: String,
+    entries: List<LibraryEntry>,
+    mediaType: String,
+    onItemClick: (Int) -> Unit
+) {
+    if (entries.isEmpty()) return
+
+    val aspectRatio = if (mediaType == "game") 16f / 9f else 2f / 3f
+    val itemWidth = if (mediaType == "game") 140.dp else 100.dp
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                color = MovieBoxPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "${entries.size}",
+                fontSize = 12.sp,
+                color = MovieBoxOnBackground.copy(alpha = 0.5f)
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(entries, key = { it.mediaId }) { entry ->
+                Card(
+                    modifier = Modifier
+                        .width(itemWidth)
+                        .aspectRatio(aspectRatio)
+                        .clickable { onItemClick(entry.mediaId) },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MovieBoxSurface)
+                ) {
+                    val imageUrl = if (mediaType == "game") entry.posterPath
+                    else TmdbApiService.getImageUrl(entry.posterPath)
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = entry.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 }
             }
         }

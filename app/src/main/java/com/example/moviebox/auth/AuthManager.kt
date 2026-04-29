@@ -117,4 +117,6 @@ class AuthManager @Inject constructor(
     fun getCachedUserId(): String? = cachedUserId
     fun getCachedName(): String? = cachedName
     fun getCachedPictureUrl(): String? = cachedPictureUrl
+
+
 }
