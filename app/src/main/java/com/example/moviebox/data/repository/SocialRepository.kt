@@ -3,8 +3,8 @@ package com.example.moviebox.data.repository
 import com.example.moviebox.data.remote.firebase.FirestoreService
 import com.example.moviebox.data.remote.model.FriendActivity
 import com.example.moviebox.data.remote.model.FriendReview
+import com.example.moviebox.data.remote.model.LibraryEntry
 import com.example.moviebox.data.remote.model.PublicUser
-import com.example.moviebox.data.remote.model.ReviewComment
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,6 +17,13 @@ class SocialRepository @Inject constructor(
 
     suspend fun upsertCurrentUser(userId: String, name: String, email: String, pictureUrl: String?) =
         firestore.upsertCurrentUser(userId, name, email, pictureUrl)
+
+    suspend fun updateUserProfile(
+        userId: String,
+        bio: String? = null,
+        links: List<String>? = null,
+        pictureUrl: String? = null
+    ) = firestore.updateUserProfile(userId, bio, links, pictureUrl)
 
     suspend fun getUser(userId: String): PublicUser? = firestore.getUser(userId)
 
@@ -118,4 +125,40 @@ class SocialRepository @Inject constructor(
 
     suspend fun getTopItems(userId: String): List<Map<String, Any?>> =
         firestore.getTopItems(userId)
+
+    // =================== LIBRARY ===================
+
+    suspend fun setLibraryStatus(
+        userId: String,
+        mediaType: String,
+        mediaId: Int,
+        status: String,
+        isFavorite: Boolean? = null,
+        title: String? = null,
+        posterPath: String? = null,
+        releaseYear: String? = null
+    ) = firestore.setLibraryStatus(
+        userId, mediaType, mediaId, status, isFavorite, title, posterPath, releaseYear
+    )
+
+    suspend fun setLibraryFavorite(
+        userId: String,
+        mediaType: String,
+        mediaId: Int,
+        isFavorite: Boolean,
+        title: String? = null,
+        posterPath: String? = null,
+        releaseYear: String? = null
+    ) = firestore.setLibraryFavorite(
+        userId, mediaType, mediaId, isFavorite, title, posterPath, releaseYear
+    )
+
+    suspend fun removeLibraryEntry(userId: String, mediaType: String, mediaId: Int) =
+        firestore.removeLibraryEntry(userId, mediaType, mediaId)
+
+    suspend fun getLibraryEntry(userId: String, mediaType: String, mediaId: Int): LibraryEntry? =
+        firestore.getLibraryEntry(userId, mediaType, mediaId)
+
+    suspend fun getLibrary(userId: String): List<LibraryEntry> =
+        firestore.getLibrary(userId)
 }

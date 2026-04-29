@@ -11,9 +11,29 @@ data class PublicUser(
     val pictureUrl: String? = null,
     val searchableName: String = "",
     val followersCount: Int = 0,
-    val followingCount: Int = 0
+    val followingCount: Int = 0,
+    val bio: String = "",
+    val links: List<String> = emptyList()
 ) {
-    constructor() : this("", "", "", null, "", 0, 0)
+    constructor() : this("", "", "", null, "", 0, 0, "", emptyList())
+}
+
+/**
+ * Entrada en la librería del usuario (Firestore: users/{userId}/library/{mediaType}_{mediaId}).
+ * Sustituye y unifica lo que antes vivía en Room: watchlisted/watched/favorite.
+ */
+data class LibraryEntry(
+    val mediaType: String = "",     // "movie" | "tv" | "game"
+    val mediaId: Int = 0,
+    val status: String = "",        // "watched" | "watchlist"
+    val isFavorite: Boolean = false,
+    val title: String = "",
+    val posterPath: String? = null,
+    val releaseYear: String = "",
+    val hasReview: Boolean = false,
+    val updatedAt: Long = 0L
+) {
+    constructor() : this("", 0, "", false, "", null, "", false, 0L)
 }
 
 /**

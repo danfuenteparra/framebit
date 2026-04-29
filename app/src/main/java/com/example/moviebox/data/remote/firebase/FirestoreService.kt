@@ -2,6 +2,7 @@ package com.example.moviebox.data.remote.firebase
 
 import com.example.moviebox.data.remote.model.FriendActivity
 import com.example.moviebox.data.remote.model.FriendReview
+import com.example.moviebox.data.remote.model.LibraryEntry
 import com.example.moviebox.data.remote.model.PublicUser
 import com.example.moviebox.data.remote.model.ReviewComment
 import com.google.firebase.auth.FirebaseAuth
@@ -9,6 +10,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -38,16 +40,39 @@ class FirestoreService @Inject constructor(
         val ref = firestore.collection("users").document(userId)
         val existing = ref.get().await()
 
+        // Preservamos campos editables que ya tuviera el usuario (bio, links, foto custom)
+        val preservedPicture = if (existing.exists() && existing.getString("pictureUrl") != null)
+            existing.getString("pictureUrl")
+        else pictureUrl
+
         val data = mapOf(
             "userId" to userId,
             "name" to name,
             "email" to email,
-            "pictureUrl" to pictureUrl,
+            "pictureUrl" to preservedPicture,
             "searchableName" to name.lowercase(),
             "followersCount" to (existing.getLong("followersCount") ?: 0L),
-            "followingCount" to (existing.getLong("followingCount") ?: 0L)
+            "followingCount" to (existing.getLong("followingCount") ?: 0L),
+            "bio" to (existing.getString("bio") ?: ""),
+            "links" to (existing.get("links") as? List<*> ?: emptyList<String>())
         )
         ref.set(data).await()
+    }
+
+    /** Actualiza datos editables del perfil: bio, links y/o foto. */
+    suspend fun updateUserProfile(
+        userId: String,
+        bio: String?,
+        links: List<String>?,
+        pictureUrl: String?
+    ) {
+        val updates = mutableMapOf<String, Any?>()
+        if (bio != null) updates["bio"] = bio
+        if (links != null) updates["links"] = links
+        if (pictureUrl != null) updates["pictureUrl"] = pictureUrl
+        if (updates.isEmpty()) return
+        firestore.collection("users").document(userId)
+            .set(updates, SetOptions.merge()).await()
     }
 
     suspend fun getUser(userId: String): PublicUser? {
@@ -210,10 +235,28 @@ class FirestoreService @Inject constructor(
                 "createdAt" to System.currentTimeMillis()
             )
         ).await()
+
+        // Auto-marca como visto en la library al reseñar
+        setLibraryStatus(
+            userId = userId,
+            mediaType = mediaType,
+            mediaId = mediaId,
+            status = "watched",
+            isFavorite = isFavorite,
+            title = title,
+            posterPath = posterPath,
+            releaseYear = releaseYear,
+            hasReview = true
+        )
     }
 
     suspend fun deleteReview(userId: String, mediaType: String, mediaId: Int) {
         reviewRef(userId, mediaType, mediaId).delete().await()
+        // Marcamos library.hasReview = false (sigue como visto)
+        val libRef = libraryRef(userId, mediaType, mediaId)
+        if (libRef.get().await().exists()) {
+            libRef.update("hasReview", false).await()
+        }
     }
 
     suspend fun getFriendsReviewedItems(
@@ -469,5 +512,109 @@ class FirestoreService @Inject constructor(
         } catch (e: Exception) {
             emptyList()
         }
+    }
+
+    // =================== LIBRARY (watchlist + watched + favoritos) ===================
+
+    private fun libraryRef(userId: String, mediaType: String, mediaId: Int) =
+        firestore.collection("users")
+            .document(userId)
+            .collection("library")
+            .document("${mediaType}_$mediaId")
+
+    /**
+     * Crea/actualiza una entrada de library con el status indicado.
+     * Si ya tenía una entrada con status "watched", NO la rebaja a "watchlist".
+     * Solo actualiza los campos que se pasan; el resto se hace merge.
+     */
+    suspend fun setLibraryStatus(
+        userId: String,
+        mediaType: String,
+        mediaId: Int,
+        status: String,                 // "watched" | "watchlist"
+        isFavorite: Boolean? = null,
+        title: String? = null,
+        posterPath: String? = null,
+        releaseYear: String? = null,
+        hasReview: Boolean? = null
+    ) {
+        val ref = libraryRef(userId, mediaType, mediaId)
+        val existing = ref.get().await()
+
+        // No rebajar de watched a watchlist
+        val finalStatus = if (existing.getString("status") == "watched" && status == "watchlist")
+            "watched" else status
+
+        val data = mutableMapOf<String, Any?>(
+            "mediaType" to mediaType,
+            "mediaId" to mediaId,
+            "status" to finalStatus,
+            "updatedAt" to System.currentTimeMillis()
+        )
+        if (isFavorite != null) data["isFavorite"] = isFavorite
+        if (title != null) data["title"] = title
+        if (posterPath != null) data["posterPath"] = posterPath
+        if (releaseYear != null) data["releaseYear"] = releaseYear
+        if (hasReview != null) data["hasReview"] = hasReview
+
+        ref.set(data, SetOptions.merge()).await()
+    }
+
+    /** Cambia solo el flag de favorito sin tocar status. Crea la entrada si no existía. */
+    suspend fun setLibraryFavorite(
+        userId: String,
+        mediaType: String,
+        mediaId: Int,
+        isFavorite: Boolean,
+        title: String? = null,
+        posterPath: String? = null,
+        releaseYear: String? = null
+    ) {
+        val ref = libraryRef(userId, mediaType, mediaId)
+        val existing = ref.get().await()
+        val data = mutableMapOf<String, Any?>(
+            "mediaType" to mediaType,
+            "mediaId" to mediaId,
+            "isFavorite" to isFavorite,
+            "updatedAt" to System.currentTimeMillis()
+        )
+        if (!existing.exists()) {
+            // Si solo es favorito y no estaba en library, lo guardamos sin status concreto:
+            // pero status es obligatorio en el modelo, lo metemos como "watchlist" por defecto.
+            data["status"] = "watchlist"
+        }
+        if (title != null) data["title"] = title
+        if (posterPath != null) data["posterPath"] = posterPath
+        if (releaseYear != null) data["releaseYear"] = releaseYear
+
+        ref.set(data, SetOptions.merge()).await()
+    }
+
+    /** Borra la entrada de library completamente. */
+    suspend fun removeLibraryEntry(userId: String, mediaType: String, mediaId: Int) {
+        libraryRef(userId, mediaType, mediaId).delete().await()
+    }
+
+    /** Devuelve la entrada de library (o null si no existe). */
+    suspend fun getLibraryEntry(userId: String, mediaType: String, mediaId: Int): LibraryEntry? {
+        return try {
+            val snap = libraryRef(userId, mediaType, mediaId).get().await()
+            if (!snap.exists()) null else snap.toObject(LibraryEntry::class.java)
+        } catch (_: Exception) { null }
+    }
+
+    /**
+     * Devuelve TODAS las entradas de library de un usuario, ordenadas por updatedAt desc.
+     * Filtra en el cliente por status / mediaType / favorito.
+     */
+    suspend fun getLibrary(userId: String): List<LibraryEntry> {
+        return try {
+            firestore.collection("users")
+                .document(userId)
+                .collection("library")
+                .orderBy("updatedAt", Query.Direction.DESCENDING)
+                .get().await()
+                .toObjects(LibraryEntry::class.java)
+        } catch (_: Exception) { emptyList() }
     }
 }

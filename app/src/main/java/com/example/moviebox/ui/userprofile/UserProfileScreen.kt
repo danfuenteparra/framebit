@@ -1,4 +1,4 @@
-package com.example.moviebox.ui.screens.userprofile
+package com.example.moviebox.ui.userprofile
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,6 +25,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.api.TmdbApiService
+import com.example.moviebox.ui.screens.userprofile.TopItemDisplay
+import com.example.moviebox.ui.screens.userprofile.UserProfileViewModel
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary

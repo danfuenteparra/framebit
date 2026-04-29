@@ -37,7 +37,7 @@ import com.example.moviebox.ui.screens.search.SearchScreen
 import com.example.moviebox.ui.screens.tvshowdetail.TvShowDetailScreen
 import com.example.moviebox.ui.screens.tvshows.TvShowsScreen
 import com.example.moviebox.ui.screens.userlist.UserListScreen
-import com.example.moviebox.ui.screens.userprofile.UserProfileScreen
+import com.example.moviebox.ui.userprofile.UserProfileScreen
 import com.example.moviebox.ui.screens.usersearch.UserSearchScreen
 import com.example.moviebox.ui.screens.watchlist.WatchlistScreen
 import com.example.moviebox.ui.screens.reviewdetail.ReviewDetailScreen
