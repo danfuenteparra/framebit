@@ -114,7 +114,7 @@ class MovieDetailViewModel @Inject constructor(
         }
     }
 
-    private fun checkLocalStatus() {
+    fun checkLocalStatus() {
         viewModelScope.launch {
             val existing = movieRepository.getMovieById(movieId)
             _isWatchlisted.value = existing?.isWatchlisted ?: false

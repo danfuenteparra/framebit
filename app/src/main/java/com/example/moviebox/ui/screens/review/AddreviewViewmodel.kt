@@ -158,7 +158,22 @@ class AddReviewViewModel @Inject constructor(
                     comment = comment
                 )
             )
-            // Sincronizar a Firestore
+            // Marcar como visto/jugado y sacar de watchlist (Room)
+            when (sel.type) {
+                ReviewMediaType.MOVIE -> {
+                    movieRepository.toggleWatched(sel.id, true)
+                    movieRepository.toggleWatchlisted(sel.id, false)
+                }
+                ReviewMediaType.TV -> {
+                    tvShowRepository.toggleWatched(sel.id, true)
+                    tvShowRepository.toggleWatchlisted(sel.id, false)
+                }
+                ReviewMediaType.GAME -> {
+                    gameRepository.togglePlayed(sel.id, true)
+                    gameRepository.toggleWatchlisted(sel.id, false)
+                }
+            }
+            // Sincronizar a Firestore (la review hace auto-watched en library dentro de upsertReview)
             val userId = authManager.getCachedUserId()
             if (userId != null) {
                 try {

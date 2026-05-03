@@ -105,7 +105,7 @@ class TvShowDetailViewModel @Inject constructor(
         }
     }
 
-    private fun checkLocalStatus() {
+    fun checkLocalStatus() {
         viewModelScope.launch {
             val existing = tvShowRepository.getTvShowById(tvShowId)
             _isWatchlisted.value = existing?.isWatchlisted ?: false

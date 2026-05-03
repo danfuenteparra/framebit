@@ -30,7 +30,7 @@ import com.example.moviebox.ui.screens.review.AddReviewScreen
 import com.example.moviebox.ui.screens.editprofile.EditProfileScreen
 import com.example.moviebox.ui.screens.games.GamesScreen
 import com.example.moviebox.ui.screens.gamedetail.GameDetailScreen
-import com.example.moviebox.ui.screens.moviedetail.home.HomeScreen
+import com.example.moviebox.ui.screens.home.HomeScreen
 import com.example.moviebox.ui.screens.login.LoginScreen
 import com.example.moviebox.ui.screens.moviedetail.MovieDetailScreen
 import com.example.moviebox.ui.screens.profile.ProfileScreen

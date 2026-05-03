@@ -1,4 +1,4 @@
-package com.example.moviebox.ui.screens.moviedetail.home
+package com.example.moviebox.ui.screens.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*

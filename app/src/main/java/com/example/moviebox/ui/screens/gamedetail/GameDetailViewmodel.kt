@@ -91,7 +91,7 @@ class GameDetailViewModel @Inject constructor(
         }
     }
 
-    private fun checkLocalStatus() {
+    fun checkLocalStatus() {
         viewModelScope.launch {
             val existing = gameRepository.getGameById(gameId)
             _isWatchlisted.value = existing?.isWatchlisted ?: false
