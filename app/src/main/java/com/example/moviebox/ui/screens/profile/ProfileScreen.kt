@@ -176,11 +176,6 @@ fun ProfileScreen(
                         fontWeight = FontWeight.Bold,
                         color = MovieBoxOnBackground
                     )
-                    Text(
-                        text = authProfile.email ?: "",
-                        fontSize = 14.sp,
-                        color = MovieBoxOnBackground.copy(alpha = 0.7f)
-                    )
 
                     if (bio.isNotBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
