@@ -26,7 +26,7 @@ import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.api.TmdbApiService
 import com.example.moviebox.ui.screens.moviedetail.AddReviewDialog
 import com.example.moviebox.ui.screens.moviedetail.CastRow
-import com.example.moviebox.ui.screens.moviedetail.ReviewItem
+import com.example.moviebox.ui.screens.moviedetail.FriendReviewItem
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
@@ -43,6 +43,7 @@ fun TvShowDetailScreen(
     val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
     val isWatched by viewModel.isWatched.collectAsStateWithLifecycle()
     val reviews by viewModel.reviews.collectAsStateWithLifecycle()
+    val friendReviews by viewModel.friendReviews.collectAsStateWithLifecycle()
     val cast by viewModel.cast.collectAsStateWithLifecycle()
     val trailerKey by viewModel.trailerKey.collectAsStateWithLifecycle()
 
@@ -158,11 +159,22 @@ fun TvShowDetailScreen(
                         }
                         Spacer(modifier = Modifier.height(32.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = "Mis reseñas", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
+                            Text(text = "Reseñas", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
                             IconButton(onClick = { showReviewDialog = true }) { Icon(Icons.Default.Add, contentDescription = "Añadir reseña", tint = MovieBoxPrimary) }
                         }
-                        if (reviews.isEmpty()) Text(text = "No has escrito ninguna reseña.", color = MovieBoxOnBackground.copy(alpha = 0.5f), fontSize = 14.sp)
-                        else reviews.forEach { review -> ReviewItem(review = review, onDelete = { viewModel.deleteReview(review.id) }); Spacer(modifier = Modifier.height(8.dp)) }
+                        val myId = viewModel.getMyUserId()
+                        if (friendReviews.isEmpty()) Text(text = "Aún no hay reseñas. ¡Sé el primero!", color = MovieBoxOnBackground.copy(alpha = 0.5f), fontSize = 14.sp)
+                        else friendReviews.forEach { fr ->
+                            FriendReviewItem(
+                                review = fr,
+                                isOwn = fr.userId == myId,
+                                onDelete = {
+                                    val local = reviews.firstOrNull()
+                                    if (local != null) viewModel.deleteReview(local.id)
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
                 }

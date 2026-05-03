@@ -268,69 +268,50 @@ fun ProfileScreen(
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MovieBoxOnBackground,
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                textAlign = TextAlign.Start
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Text("Películas", fontSize = 13.sp, color = MovieBoxPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                Text("Series", fontSize = 13.sp, color = MovieBoxPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                Text("Juegos", fontSize = 13.sp, color = MovieBoxPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            for (row in 0..2) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    TopItemSlot(
-                        item = topMovies.getOrNull(row),
-                        mediaType = "movie",
-                        modifier = Modifier.weight(1f),
-                        onAdd = {
-                            searchMediaType = "movie"
-                            searchPosition = row
-                            showSearchDialog = true
-                        },
-                        onClick = { onMovieClick(it) },
-                        onRemove = { viewModel.removeTopItem("movie", row) }
-                    )
-                    TopItemSlot(
-                        item = topTvShows.getOrNull(row),
-                        mediaType = "tv",
-                        modifier = Modifier.weight(1f),
-                        onAdd = {
-                            searchMediaType = "tv"
-                            searchPosition = row
-                            showSearchDialog = true
-                        },
-                        onClick = { onTvShowClick(it) },
-                        onRemove = { viewModel.removeTopItem("tv", row) }
-                    )
-                    TopItemSlot(
-                        item = topGames.getOrNull(row),
-                        mediaType = "game",
-                        modifier = Modifier.weight(1f),
-                        onAdd = {
-                            searchMediaType = "game"
-                            searchPosition = row
-                            showSearchDialog = true
-                        },
-                        onClick = { onGameClick(it) },
-                        onRemove = { viewModel.removeTopItem("game", row) }
-                    )
-                }
-            }
+            EditableTopRow(
+                label = "Películas",
+                items = topMovies,
+                mediaType = "movie",
+                onItemClick = { id -> onMovieClick(id) },
+                onAdd = { row ->
+                    searchMediaType = "movie"
+                    searchPosition = row
+                    showSearchDialog = true
+                },
+                onRemove = { row -> viewModel.removeTopItem("movie", row) }
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            EditableTopRow(
+                label = "Series",
+                items = topTvShows,
+                mediaType = "tv",
+                onItemClick = { id -> onTvShowClick(id) },
+                onAdd = { row ->
+                    searchMediaType = "tv"
+                    searchPosition = row
+                    showSearchDialog = true
+                },
+                onRemove = { row -> viewModel.removeTopItem("tv", row) }
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            EditableTopRow(
+                label = "Juegos",
+                items = topGames,
+                mediaType = "game",
+                onItemClick = { id -> onGameClick(id) },
+                onAdd = { row ->
+                    searchMediaType = "game"
+                    searchPosition = row
+                    showSearchDialog = true
+                },
+                onRemove = { row -> viewModel.removeTopItem("game", row) }
+            )
 
             Spacer(modifier = Modifier.height(24.dp))
             HorizontalDivider(color = MovieBoxSurface, modifier = Modifier.padding(horizontal = 16.dp))
@@ -375,6 +356,99 @@ fun ProfileScreen(
 }
 
 @Composable
+private fun EditableTopRow(
+    label: String,
+    items: List<TopItemEntity?>,
+    mediaType: String,
+    onItemClick: (Int) -> Unit,
+    onAdd: (Int) -> Unit,
+    onRemove: (Int) -> Unit
+) {
+    val aspectRatio = 2f / 3f // siempre 2:3 para coherencia
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            color = MovieBoxPrimary,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            for (pos in 0..2) {
+                val item = items.getOrNull(pos)
+                Box(modifier = Modifier.weight(1f)) {
+                    if (item != null) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(aspectRatio)
+                                .clickable { onItemClick(item.mediaId) },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MovieBoxSurface)
+                        ) {
+                            val imageUrl = if (mediaType == "game") item.posterPath
+                            else TmdbApiService.getImageUrl(item.posterPath)
+                            AsyncImage(
+                                model = imageUrl,
+                                contentDescription = item.title,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+                        IconButton(
+                            onClick = { onRemove(pos) },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Quitar",
+                                tint = MovieBoxOnBackground,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clip(CircleShape)
+                            )
+                        }
+                    } else {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(aspectRatio)
+                                .clickable { onAdd(pos) },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MovieBoxSurface.copy(alpha = 0.5f)),
+                            border = CardDefaults.outlinedCardBorder().copy(
+                                brush = androidx.compose.ui.graphics.SolidColor(MovieBoxOnBackground.copy(alpha = 0.2f))
+                            )
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Añadir",
+                                    tint = MovieBoxOnBackground.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun TopItemSlot(
     item: TopItemEntity?,
     mediaType: String,
@@ -383,10 +457,9 @@ fun TopItemSlot(
     onClick: (Int) -> Unit,
     onRemove: () -> Unit
 ) {
-    val aspectRatio = if (mediaType == "game") 16f / 9f else 2f / 3f
+    val aspectRatio = 2f / 3f
 
     if (item != null) {
-        // Long press = quitar; click corto = ir al detalle
         Box(modifier = modifier) {
             Card(
                 modifier = Modifier
@@ -407,7 +480,6 @@ fun TopItemSlot(
                     contentScale = ContentScale.Crop
                 )
             }
-            // Botón pequeño para quitar arriba a la derecha
             IconButton(
                 onClick = onRemove,
                 modifier = Modifier
@@ -460,8 +532,8 @@ private fun WatchedRow(
 ) {
     if (entries.isEmpty()) return
 
-    val aspectRatio = if (mediaType == "game") 16f / 9f else 2f / 3f
-    val itemWidth = if (mediaType == "game") 140.dp else 100.dp
+    val aspectRatio = 2f / 3f
+    val itemWidth = 100.dp
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(

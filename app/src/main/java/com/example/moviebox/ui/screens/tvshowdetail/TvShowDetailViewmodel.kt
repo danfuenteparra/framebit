@@ -8,6 +8,7 @@ import com.example.moviebox.data.local.entity.ReviewEntity
 import com.example.moviebox.data.local.entity.TvShowEntity
 import com.example.moviebox.data.remote.dto.CastDto
 import com.example.moviebox.data.remote.dto.TvShowDetailDto
+import com.example.moviebox.data.remote.model.FriendReview
 import com.example.moviebox.data.repository.ReviewRepository
 import com.example.moviebox.data.repository.SocialRepository
 import com.example.moviebox.data.repository.TvShowRepository
@@ -44,6 +45,9 @@ class TvShowDetailViewModel @Inject constructor(
     private val _reviews = MutableStateFlow<List<ReviewEntity>>(emptyList())
     val reviews: StateFlow<List<ReviewEntity>> = _reviews
 
+    private val _friendReviews = MutableStateFlow<List<FriendReview>>(emptyList())
+    val friendReviews: StateFlow<List<FriendReview>> = _friendReviews
+
     private val _cast = MutableStateFlow<List<CastDto>>(emptyList())
     val cast: StateFlow<List<CastDto>> = _cast
 
@@ -56,7 +60,22 @@ class TvShowDetailViewModel @Inject constructor(
         loadVideos()
         checkLocalStatus()
         loadReviews()
+        loadAllReviews()
     }
+
+    private fun loadAllReviews() {
+        viewModelScope.launch {
+            try {
+                socialRepository.ensureSignedIn()
+                val myId = authManager.getCachedUserId() ?: ""
+                _friendReviews.value = socialRepository.getAllReviewsForMedia("tv", tvShowId, myId)
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun refreshFriendReviews() = loadAllReviews()
+
+    fun getMyUserId(): String = authManager.getCachedUserId() ?: ""
 
     private fun loadTvShowDetail() {
         viewModelScope.launch {
@@ -147,6 +166,7 @@ class TvShowDetailViewModel @Inject constructor(
                         comment = comment,
                         isFavorite = _isFavorite.value
                     )
+                    loadAllReviews()
                 } catch (_: Exception) { }
             }
         }
@@ -159,6 +179,7 @@ class TvShowDetailViewModel @Inject constructor(
             if (!userId.isNullOrBlank()) {
                 try {
                     socialRepository.deleteReviewRemote(userId, "tv", tvShowId)
+                    loadAllReviews()
                 } catch (_: Exception) { }
             }
         }

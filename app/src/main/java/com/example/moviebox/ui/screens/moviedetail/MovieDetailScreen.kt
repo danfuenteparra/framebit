@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +32,7 @@ import coil.compose.AsyncImage
 import com.example.moviebox.data.local.entity.ReviewEntity
 import com.example.moviebox.data.remote.api.TmdbApiService
 import com.example.moviebox.data.remote.dto.CastDto
+import com.example.moviebox.data.remote.model.FriendReview
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
@@ -49,6 +51,7 @@ fun MovieDetailScreen(
     val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
     val isWatched by viewModel.isWatched.collectAsStateWithLifecycle()
     val reviews by viewModel.reviews.collectAsStateWithLifecycle()
+    val friendReviews by viewModel.friendReviews.collectAsStateWithLifecycle()
     val cast by viewModel.cast.collectAsStateWithLifecycle()
     val director by viewModel.director.collectAsStateWithLifecycle()
     val trailerKey by viewModel.trailerKey.collectAsStateWithLifecycle()
@@ -155,11 +158,23 @@ fun MovieDetailScreen(
                         // Reseñas
                         Spacer(modifier = Modifier.height(32.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = "Mis reseñas", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
+                            Text(text = "Reseñas", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
                             IconButton(onClick = { showReviewDialog = true }) { Icon(Icons.Default.Add, contentDescription = "Añadir reseña", tint = MovieBoxPrimary) }
                         }
-                        if (reviews.isEmpty()) Text(text = "No has escrito ninguna reseña.", color = MovieBoxOnBackground.copy(alpha = 0.5f), fontSize = 14.sp)
-                        else reviews.forEach { review -> ReviewItem(review = review, onDelete = { viewModel.deleteReview(review.id) }); Spacer(modifier = Modifier.height(8.dp)) }
+                        val myId = viewModel.getMyUserId()
+                        if (friendReviews.isEmpty()) Text(text = "Aún no hay reseñas. ¡Sé el primero!", color = MovieBoxOnBackground.copy(alpha = 0.5f), fontSize = 14.sp)
+                        else friendReviews.forEach { fr ->
+                            FriendReviewItem(
+                                review = fr,
+                                isOwn = fr.userId == myId,
+                                onDelete = {
+                                    // Encontrar la review local correspondiente y borrarla
+                                    val local = reviews.firstOrNull()
+                                    if (local != null) viewModel.deleteReview(local.id)
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
@@ -184,6 +199,74 @@ fun CastRow(cast: List<CastDto>) {
 }
 
 @Composable
+fun FriendReviewItem(
+    review: FriendReview,
+    isOwn: Boolean,
+    onDelete: () -> Unit
+) {
+    val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+    Card(colors = CardDefaults.cardColors(containerColor = MovieBoxSurface), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                if (review.userPicture != null) {
+                    AsyncImage(
+                        model = review.userPicture,
+                        contentDescription = review.userName,
+                        modifier = Modifier.size(36.dp).clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Box(modifier = Modifier.size(36.dp).clip(CircleShape), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Person, contentDescription = null, tint = MovieBoxOnBackground)
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = review.userName.ifBlank { "Usuario" },
+                        color = MovieBoxOnBackground,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (review.createdAt > 0L) {
+                        Text(
+                            text = dateFormat.format(Date(review.createdAt)),
+                            color = MovieBoxOnBackground.copy(alpha = 0.5f),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+                if (isOwn) {
+                    IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = MovieBoxOnBackground.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            review.rating?.let { rating ->
+                Row {
+                    repeat(5) { index ->
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = null,
+                            tint = if (index < rating) MovieBoxPrimary else MovieBoxOnBackground.copy(alpha = 0.3f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+            if (review.comment.isNotBlank()) {
+                Text(text = review.comment, color = MovieBoxOnBackground, fontSize = 14.sp)
+            }
+        }
+    }
+}
+
+@Composable
+@Deprecated("Usa FriendReviewItem", ReplaceWith("FriendReviewItem(review, isOwn, onDelete)"))
 fun ReviewItem(review: ReviewEntity, onDelete: () -> Unit) {
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
     Card(colors = CardDefaults.cardColors(containerColor = MovieBoxSurface), modifier = Modifier.fillMaxWidth()) {

@@ -277,7 +277,7 @@ private fun ClickableTopRow(
     mediaType: String,
     onItemClick: (Int) -> Unit
 ) {
-    val aspectRatio = if (mediaType == "game") 16f / 9f else 2f / 3f
+    val aspectRatio = 2f / 3f
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -336,8 +336,8 @@ private fun WatchedRow(
 ) {
     if (entries.isEmpty()) return
 
-    val aspectRatio = if (mediaType == "game") 16f / 9f else 2f / 3f
-    val itemWidth = if (mediaType == "game") 140.dp else 100.dp
+    val aspectRatio = 2f / 3f
+    val itemWidth = 100.dp
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(

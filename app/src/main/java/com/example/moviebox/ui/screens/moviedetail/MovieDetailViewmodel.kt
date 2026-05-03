@@ -8,6 +8,7 @@ import com.example.moviebox.data.local.entity.MovieEntity
 import com.example.moviebox.data.local.entity.ReviewEntity
 import com.example.moviebox.data.remote.dto.CastDto
 import com.example.moviebox.data.remote.dto.MovieDetailDto
+import com.example.moviebox.data.remote.model.FriendReview
 import com.example.moviebox.data.repository.MovieRepository
 import com.example.moviebox.data.repository.ReviewRepository
 import com.example.moviebox.data.repository.SocialRepository
@@ -44,6 +45,9 @@ class MovieDetailViewModel @Inject constructor(
     private val _reviews = MutableStateFlow<List<ReviewEntity>>(emptyList())
     val reviews: StateFlow<List<ReviewEntity>> = _reviews
 
+    private val _friendReviews = MutableStateFlow<List<FriendReview>>(emptyList())
+    val friendReviews: StateFlow<List<FriendReview>> = _friendReviews
+
     private val _cast = MutableStateFlow<List<CastDto>>(emptyList())
     val cast: StateFlow<List<CastDto>> = _cast
 
@@ -59,7 +63,24 @@ class MovieDetailViewModel @Inject constructor(
         loadVideos()
         checkLocalStatus()
         loadReviews()
+        loadAllReviews()
     }
+
+    private fun loadAllReviews() {
+        viewModelScope.launch {
+            try {
+                socialRepository.ensureSignedIn()
+                val myId = authManager.getCachedUserId() ?: ""
+                _friendReviews.value = socialRepository.getAllReviewsForMedia("movie", movieId, myId)
+            } catch (_: Exception) { }
+        }
+    }
+
+    /** Llamar para refrescar reseñas remotas (tras añadir/borrar la propia, p.ej.). */
+    fun refreshFriendReviews() = loadAllReviews()
+
+    /** Devuelve el userId del usuario actual (vacío si no hay sesión). */
+    fun getMyUserId(): String = authManager.getCachedUserId() ?: ""
 
     private fun loadMovieDetail() {
         viewModelScope.launch {
@@ -154,6 +175,7 @@ class MovieDetailViewModel @Inject constructor(
                         comment = comment,
                         isFavorite = _isFavorite.value
                     )
+                    loadAllReviews()
                 } catch (_: Exception) { }
             }
         }
@@ -167,6 +189,7 @@ class MovieDetailViewModel @Inject constructor(
             if (!userId.isNullOrBlank()) {
                 try {
                     socialRepository.deleteReviewRemote(userId, "movie", movieId)
+                    loadAllReviews()
                 } catch (_: Exception) { }
             }
         }

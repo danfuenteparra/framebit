@@ -8,6 +8,7 @@ import com.example.moviebox.data.local.entity.GameEntity
 import com.example.moviebox.data.local.entity.ReviewEntity
 import com.example.moviebox.data.remote.dto.GameDetailDto
 import com.example.moviebox.data.remote.dto.ScreenshotDto
+import com.example.moviebox.data.remote.model.FriendReview
 import com.example.moviebox.data.repository.GameRepository
 import com.example.moviebox.data.repository.ReviewRepository
 import com.example.moviebox.data.repository.SocialRepository
@@ -44,6 +45,9 @@ class GameDetailViewModel @Inject constructor(
     private val _reviews = MutableStateFlow<List<ReviewEntity>>(emptyList())
     val reviews: StateFlow<List<ReviewEntity>> = _reviews
 
+    private val _friendReviews = MutableStateFlow<List<FriendReview>>(emptyList())
+    val friendReviews: StateFlow<List<FriendReview>> = _friendReviews
+
     private val _screenshots = MutableStateFlow<List<ScreenshotDto>>(emptyList())
     val screenshots: StateFlow<List<ScreenshotDto>> = _screenshots
 
@@ -52,7 +56,22 @@ class GameDetailViewModel @Inject constructor(
         loadScreenshots()
         checkLocalStatus()
         loadReviews()
+        loadAllReviews()
     }
+
+    private fun loadAllReviews() {
+        viewModelScope.launch {
+            try {
+                socialRepository.ensureSignedIn()
+                val myId = authManager.getCachedUserId() ?: ""
+                _friendReviews.value = socialRepository.getAllReviewsForMedia("game", gameId, myId)
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun refreshFriendReviews() = loadAllReviews()
+
+    fun getMyUserId(): String = authManager.getCachedUserId() ?: ""
 
     private fun loadGameDetail() {
         viewModelScope.launch {
@@ -133,6 +152,7 @@ class GameDetailViewModel @Inject constructor(
                         comment = comment,
                         isFavorite = _isFavorite.value
                     )
+                    loadAllReviews()
                 } catch (_: Exception) { }
             }
         }
@@ -145,6 +165,7 @@ class GameDetailViewModel @Inject constructor(
             if (!userId.isNullOrBlank()) {
                 try {
                     socialRepository.deleteReviewRemote(userId, "game", gameId)
+                    loadAllReviews()
                 } catch (_: Exception) { }
             }
         }
