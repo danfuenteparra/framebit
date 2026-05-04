@@ -71,8 +71,13 @@ class MovieDetailViewModel @Inject constructor(
             try {
                 socialRepository.ensureSignedIn()
                 val myId = authManager.getCachedUserId() ?: ""
-                _friendReviews.value = socialRepository.getAllReviewsForMedia("movie", movieId, myId)
-            } catch (_: Exception) { }
+                val result = socialRepository.getAllReviewsForMedia("movie", movieId, myId)
+                android.util.Log.d("ReviewsDebug", "OK movieId=$movieId myId=$myId count=${result.size}")
+                result.forEach { android.util.Log.d("ReviewsDebug", "  -> ${it.userId} / ${it.userName} / rating=${it.rating}") }
+                _friendReviews.value = result
+            } catch (e: Exception) {
+                android.util.Log.e("ReviewsDebug", "ERROR cargando reviews para movieId=$movieId", e)
+            }
         }
     }
 
