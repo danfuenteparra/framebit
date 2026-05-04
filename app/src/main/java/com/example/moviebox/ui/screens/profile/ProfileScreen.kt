@@ -106,7 +106,7 @@ fun ProfileScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mi Perfil", color = MovieBoxOnBackground, fontWeight = FontWeight.Bold) },
+                title = { Text("Mi perfil", color = MovieBoxOnBackground, fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = onNavigateToUserSearch) {
                         Icon(Icons.Default.PersonSearch, contentDescription = "Buscar usuarios", tint = MovieBoxPrimary)
@@ -259,7 +259,7 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Mi Top 3",
+                text = "Mis top 3",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MovieBoxOnBackground,
@@ -313,7 +313,7 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Vistas",
+                text = "Visto/Jugado",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MovieBoxOnBackground,
