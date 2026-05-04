@@ -34,8 +34,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.api.TmdbApiService
 import com.example.moviebox.data.remote.model.LibraryEntry
-import com.example.moviebox.ui.screens.userprofile.TopItemDisplay
-import com.example.moviebox.ui.screens.userprofile.UserProfileViewModel
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
@@ -228,7 +226,7 @@ fun UserProfileScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Top 3",
+                text = "Top 3 de " + u.name,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MovieBoxOnBackground,
@@ -249,7 +247,7 @@ fun UserProfileScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Vistas",
+                text = "Visto/jugado de " + u.name,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MovieBoxOnBackground,

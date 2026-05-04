@@ -313,7 +313,7 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Visto/Jugado",
+                text = "Visto /jugado",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MovieBoxOnBackground,
