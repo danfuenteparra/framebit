@@ -71,6 +71,11 @@ fun AppNavigation(
 
     val showBottomBar = currentRoute in bottomNavScreens
 
+    // Helper local: navegar al detalle de una reseña por reviewId
+    val navigateToReview: (String) -> Unit = { reviewId ->
+        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
+    }
+
     Scaffold(
         containerColor = MovieBoxBackground,
         bottomBar = {
@@ -99,9 +104,7 @@ fun AppNavigation(
                     onMovieClick = { id -> navController.navigate(Screen.MovieDetail.createRoute(id)) },
                     onNavigateToSearch = { navController.navigate(Screen.Search.createRoute("movie")) },
                     onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) },
-                    onReviewClick = { reviewId ->
-                        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
-                    }
+                    onReviewClick = navigateToReview
                 )
             }
 
@@ -110,9 +113,7 @@ fun AppNavigation(
                     onTvShowClick = { id -> navController.navigate(Screen.TvShowDetail.createRoute(id)) },
                     onNavigateToSearch = { navController.navigate(Screen.Search.createRoute("tv")) },
                     onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) },
-                    onReviewClick = { reviewId ->
-                        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
-                    }
+                    onReviewClick = navigateToReview
                 )
             }
 
@@ -121,9 +122,7 @@ fun AppNavigation(
                     onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) },
                     onNavigateToSearch = { navController.navigate(Screen.Search.createRoute("game")) },
                     onNavigateToWatchlist = { navController.navigate(Screen.Watchlist.route) },
-                    onReviewClick = { reviewId ->
-                        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
-                    }
+                    onReviewClick = navigateToReview
                 )
             }
 
@@ -226,21 +225,30 @@ fun AppNavigation(
                 route = Screen.MovieDetail.route,
                 arguments = listOf(navArgument("movieId") { type = NavType.IntType })
             ) {
-                MovieDetailScreen(onBack = { navController.popBackStack() })
+                MovieDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onReviewClick = navigateToReview
+                )
             }
 
             composable(
                 route = Screen.TvShowDetail.route,
                 arguments = listOf(navArgument("tvShowId") { type = NavType.IntType })
             ) {
-                TvShowDetailScreen(onBack = { navController.popBackStack() })
+                TvShowDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onReviewClick = navigateToReview
+                )
             }
 
             composable(
                 route = Screen.GameDetail.route,
                 arguments = listOf(navArgument("gameId") { type = NavType.IntType })
             ) {
-                GameDetailScreen(onBack = { navController.popBackStack() })
+                GameDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onReviewClick = navigateToReview
+                )
             }
 
             composable(
@@ -289,7 +297,6 @@ fun BottomNavBar(navController: NavHostController) {
             BottomItem(item, currentDestination, navController)
         }
 
-        // Botón central destacado: añadir reseña
         NavigationBarItem(
             selected = false,
             onClick = { navController.navigate(Screen.AddReview.route) },

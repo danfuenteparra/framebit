@@ -18,7 +18,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -27,9 +26,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.api.TmdbApiService
-import com.example.moviebox.ui.screens.moviedetail.AddReviewDialog
-import com.example.moviebox.ui.screens.moviedetail.CastRow
-import com.example.moviebox.ui.screens.moviedetail.FriendReviewItem
+import com.example.moviebox.ui.components.CastRow
+import com.example.moviebox.ui.components.reviews.AddReviewDialog
+import com.example.moviebox.ui.components.reviews.ReviewsSection
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
@@ -39,6 +38,7 @@ import com.example.moviebox.ui.theme.MovieBoxSurface
 @Composable
 fun TvShowDetailScreen(
     onBack: () -> Unit,
+    onReviewClick: (reviewId: String) -> Unit,
     viewModel: TvShowDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -69,16 +69,32 @@ fun TvShowDetailScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Detalle", color = MovieBoxOnBackground, fontWeight = FontWeight.Bold) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = MovieBoxOnBackground) } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = MovieBoxOnBackground)
+                    }
+                },
                 actions = {
                     IconButton(onClick = { viewModel.toggleWatchlisted() }) {
-                        Icon(imageVector = if (isWatchlisted) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder, contentDescription = "Watchlist", tint = if (isWatchlisted) MovieBoxPrimary else MovieBoxOnBackground)
+                        Icon(
+                            imageVector = if (isWatchlisted) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                            contentDescription = "Watchlist",
+                            tint = if (isWatchlisted) MovieBoxPrimary else MovieBoxOnBackground
+                        )
                     }
                     IconButton(onClick = { viewModel.toggleFavorite() }) {
-                        Icon(imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, contentDescription = "Favorita", tint = if (isFavorite) MovieBoxPrimary else MovieBoxOnBackground)
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                            contentDescription = "Favorita",
+                            tint = if (isFavorite) MovieBoxPrimary else MovieBoxOnBackground
+                        )
                     }
                     IconButton(onClick = { viewModel.toggleWatched() }) {
-                        Icon(imageVector = if (isWatched) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle, contentDescription = "Vista", tint = if (isWatched) MovieBoxPrimary else MovieBoxOnBackground)
+                        Icon(
+                            imageVector = if (isWatched) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
+                            contentDescription = "Vista",
+                            tint = if (isWatched) MovieBoxPrimary else MovieBoxOnBackground
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MovieBoxBackground)
@@ -93,13 +109,23 @@ fun TvShowDetailScreen(
                 val tvShow = (uiState as TvShowDetailUiState.Success).tvShow
                 Column(modifier = Modifier.fillMaxSize().padding(innerPadding).verticalScroll(rememberScrollState())) {
                     Box {
-                        AsyncImage(model = TmdbApiService.getImageUrl(tvShow.backdropPath, TmdbApiService.BACKDROP_SIZE), contentDescription = tvShow.name, modifier = Modifier.fillMaxWidth().height(220.dp), contentScale = ContentScale.Crop)
+                        AsyncImage(
+                            model = TmdbApiService.getImageUrl(tvShow.backdropPath, TmdbApiService.BACKDROP_SIZE),
+                            contentDescription = tvShow.name,
+                            modifier = Modifier.fillMaxWidth().height(220.dp),
+                            contentScale = ContentScale.Crop
+                        )
                         if (trailerKey != null) {
-                            FloatingActionButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TmdbApiService.getYouTubeUrl(trailerKey!!)))) }, modifier = Modifier.align(Alignment.Center).size(56.dp), containerColor = MovieBoxPrimary.copy(alpha = 0.9f)) {
+                            FloatingActionButton(
+                                onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TmdbApiService.getYouTubeUrl(trailerKey!!)))) },
+                                modifier = Modifier.align(Alignment.Center).size(56.dp),
+                                containerColor = MovieBoxPrimary.copy(alpha = 0.9f)
+                            ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = "Ver trailer", tint = MovieBoxOnBackground, modifier = Modifier.size(32.dp))
                             }
                         }
                     }
+
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(text = tvShow.name, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
                         Spacer(modifier = Modifier.height(8.dp))
@@ -112,89 +138,85 @@ fun TvShowDetailScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         if (tvShow.genres.isNotEmpty()) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                tvShow.genres.take(4).forEach { genre -> SuggestionChip(onClick = {}, label = { Text(genre.name, fontSize = 12.sp) }, colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MovieBoxSurface, labelColor = MovieBoxOnBackground)) }
+                                tvShow.genres.take(4).forEach { genre ->
+                                    SuggestionChip(
+                                        onClick = {},
+                                        label = { Text(genre.name, fontSize = 12.sp) },
+                                        colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MovieBoxSurface, labelColor = MovieBoxOnBackground)
+                                    )
+                                }
                             }
                         }
                         if (trailerKey != null) {
                             Spacer(modifier = Modifier.height(12.dp))
-                            OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TmdbApiService.getYouTubeUrl(trailerKey!!)))) }, modifier = Modifier.fillMaxWidth()) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp), tint = MovieBoxPrimary); Spacer(modifier = Modifier.width(8.dp)); Text("Ver Trailer", color = MovieBoxPrimary)
+                            OutlinedButton(
+                                onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TmdbApiService.getYouTubeUrl(trailerKey!!)))) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp), tint = MovieBoxPrimary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Ver Trailer", color = MovieBoxPrimary)
                             }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(text = "Sinopsis", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = tvShow.overview.ifEmpty { "Sin descripción disponible." }, color = MovieBoxOnBackground.copy(alpha = 0.8f), fontSize = 14.sp, lineHeight = 22.sp)
-                        if (cast.isNotEmpty()) { Spacer(modifier = Modifier.height(24.dp)); Text(text = "Reparto", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground); Spacer(modifier = Modifier.height(8.dp)) }
+                        Text(
+                            text = tvShow.overview.ifEmpty { "Sin descripción disponible." },
+                            color = MovieBoxOnBackground.copy(alpha = 0.8f),
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp
+                        )
+                        if (cast.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Text(text = "Reparto", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                     }
                     if (cast.isNotEmpty()) CastRow(cast = cast)
+
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                         Spacer(modifier = Modifier.height(24.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = { viewModel.toggleWatchlisted() },
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isWatchlisted) MovieBoxSurface else MovieBoxPrimary
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = if (isWatchlisted) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "",
-                                    fontSize = 11.sp,
-                                    maxLines = 1
-                                )
+                            Button(onClick = { viewModel.toggleWatchlisted() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (isWatchlisted) MovieBoxSurface else MovieBoxPrimary)) {
+                                Icon(imageVector = if (isWatchlisted) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder, contentDescription = null, modifier = Modifier.size(16.dp))
                             }
                             Button(onClick = { viewModel.toggleFavorite() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (isFavorite) MovieBoxSurface else MovieBoxPrimary)) {
                                 Icon(imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp)); Text(
-                                text = "",
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
                             }
                             Button(onClick = { viewModel.toggleWatched() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (isWatched) MovieBoxSurface else MovieBoxPrimary)) {
                                 Icon(imageVector = if (isWatched) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp)); Text(
-                                text = "",
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis
-                            )
                             }
                         }
+
                         Spacer(modifier = Modifier.height(32.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(text = "Reseñas", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
-                            IconButton(onClick = { showReviewDialog = true }) { Icon(Icons.Default.Add, contentDescription = "Añadir reseña", tint = MovieBoxPrimary) }
-                        }
-                        val myId = viewModel.getMyUserId()
-                        if (friendReviews.isEmpty()) Text(text = "Aún no hay reseñas. ¡Sé el primero!", color = MovieBoxOnBackground.copy(alpha = 0.5f), fontSize = 14.sp)
-                        else friendReviews.forEach { fr ->
-                            FriendReviewItem(
-                                review = fr,
-                                isOwn = fr.userId == myId,
-                                onDelete = {
-                                    val local = reviews.firstOrNull()
-                                    if (local != null) viewModel.deleteReview(local.id)
-                                }
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
+
+                        ReviewsSection(
+                            reviews = friendReviews,
+                            myUserId = viewModel.getMyUserId(),
+                            onAddClick = { showReviewDialog = true },
+                            onReviewClick = onReviewClick,
+                            onLikeClick = { fr -> viewModel.toggleLike(fr) },
+                            onDeleteOwnReview = {
+                                val local = reviews.firstOrNull()
+                                if (local != null) viewModel.deleteReview(local.id)
+                            }
+                        )
+
                         Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
             }
         }
     }
-    if (showReviewDialog) AddReviewDialog(onDismiss = { showReviewDialog = false }, onConfirm = { rating, comment -> viewModel.addReview(rating, comment); showReviewDialog = false })
+
+    if (showReviewDialog) {
+        AddReviewDialog(
+            onDismiss = { showReviewDialog = false },
+            onConfirm = { rating, comment ->
+                viewModel.addReview(rating, comment)
+                showReviewDialog = false
+            }
+        )
+    }
 }

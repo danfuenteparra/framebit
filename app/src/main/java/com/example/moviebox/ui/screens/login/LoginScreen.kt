@@ -55,7 +55,7 @@ fun LoginScreen(
             )
 
             Text(
-                text = "Tu gestor personal de películas, series y videojuegos",
+                text = "Gestiona películas, series y videojuegos",
                 fontSize = 16.sp,
                 color = MovieBoxOnBackground,
                 textAlign = TextAlign.Center

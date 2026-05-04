@@ -311,6 +311,41 @@ class GameDetailViewModel @Inject constructor(
             if (!newVal) cleanupIfOrphan()
         }
     }
+
+    /**
+     * Alterna el "me gusta" sobre una reseña con actualización
+     * optimista: cambia el estado local al instante y revierte si
+     * la llamada al backend falla.
+     */
+    fun toggleLike(review: FriendReview) {
+        val myId = authManager.getCachedUserId() ?: return
+
+        // 1) Update optimista en memoria (UI instantánea)
+        val current = _friendReviews.value
+        val optimistic = current.map { fr ->
+            if (fr.reviewId == review.reviewId) {
+                fr.copy(
+                    likedByMe = !fr.likedByMe,
+                    likesCount = (fr.likesCount + if (fr.likedByMe) -1 else 1)
+                        .coerceAtLeast(0)
+                )
+            } else fr
+        }
+        _friendReviews.value = optimistic
+
+        // 2) Llamada al backend; si falla, revertimos
+        viewModelScope.launch {
+            try {
+                socialRepository.ensureSignedIn()
+                val parts = FriendReview.parseId(review.reviewId) ?: return@launch
+                val (authorId, mediaType, mediaId) = parts
+                socialRepository.toggleLike(authorId, mediaType, mediaId, myId)
+            } catch (_: Exception) {
+                // Revertir si algo falló
+                _friendReviews.value = current
+            }
+        }
+    }
 }
 
 sealed class GameDetailUiState {
