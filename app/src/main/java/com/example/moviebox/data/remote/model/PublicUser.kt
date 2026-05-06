@@ -112,3 +112,19 @@ data class ReviewComment(
 ) {
     constructor() : this("", "", "", null, "", 0L)
 }
+
+/**
+ * Relación de bloqueo entre el usuario actual y otro usuario.
+ *
+ * - [NotBlocked]    : no hay bloqueo en ninguna dirección. Vista normal.
+ * - [IBlockedThem]  : yo bloqueé al otro. Veré el perfil con mensaje + botón desbloquear.
+ * - [TheyBlockedMe] : el otro me bloqueó a mí. Veré aviso y nada de su contenido.
+ *
+ * Si ambos se bloquearon mutuamente, prevalece [IBlockedThem] porque el botón
+ * de desbloquear es la acción que más le sirve al usuario actual.
+ */
+sealed class BlockRelation {
+    object NotBlocked : BlockRelation()
+    object IBlockedThem : BlockRelation()
+    object TheyBlockedMe : BlockRelation()
+}

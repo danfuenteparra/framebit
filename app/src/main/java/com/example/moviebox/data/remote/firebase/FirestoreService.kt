@@ -1,5 +1,6 @@
 package com.example.moviebox.data.remote.firebase
 
+import com.example.moviebox.data.remote.model.BlockRelation
 import com.example.moviebox.data.remote.model.FriendActivity
 import com.example.moviebox.data.remote.model.FriendReview
 import com.example.moviebox.data.remote.model.LibraryEntry
@@ -83,18 +84,27 @@ class FirestoreService @Inject constructor(
         } catch (e: Exception) { null }
     }
 
+    /**
+     * Búsqueda de usuarios por prefijo de nombre.
+     * Excluye al usuario actual y a cualquiera con bloqueo activo en cualquier dirección.
+     */
     suspend fun searchUsers(query: String, excludeUserId: String): List<PublicUser> {
         if (query.isBlank()) return emptyList()
         val q = query.lowercase()
         return try {
-            firestore.collection("users")
+            val raw = firestore.collection("users")
                 .orderBy("searchableName")
                 .startAt(q)
                 .endAt(q + "\uf8ff")
                 .limit(20)
                 .get().await()
                 .toObjects(PublicUser::class.java)
-                .filter { it.userId != excludeUserId }
+
+            // Calculamos los IDs ocultos (yo bloqueé + me bloquearon) para filtrar
+            val hidden = if (excludeUserId.isBlank()) emptySet()
+            else getMutuallyHiddenIds(excludeUserId)
+
+            raw.filter { it.userId != excludeUserId && it.userId !in hidden }
         } catch (e: Exception) { emptyList() }
     }
 
@@ -151,33 +161,54 @@ class FirestoreService @Inject constructor(
         } catch (e: Exception) { false }
     }
 
+    /**
+     * Lista de usuarios a los que sigue [userId].
+     * Filtra los que estén involucrados en un bloqueo (en cualquier dirección).
+     */
     suspend fun getFollowing(userId: String): List<PublicUser> {
         return try {
             val ids = firestore.collection("users")
                 .document(userId).collection("following")
                 .get().await().documents.map { it.id }
-            if (ids.isEmpty()) emptyList() else fetchUsersByIds(ids)
+            if (ids.isEmpty()) return emptyList()
+            val hidden = getMutuallyHiddenIds(userId)
+            fetchUsersByIds(ids.filter { it !in hidden })
         } catch (e: Exception) { emptyList() }
     }
 
+    /**
+     * Lista de seguidores de [userId].
+     * Filtra los bloqueos en cualquier dirección.
+     */
     suspend fun getFollowers(userId: String): List<PublicUser> {
         return try {
             val ids = firestore.collection("users")
                 .document(userId).collection("followers")
                 .get().await().documents.map { it.id }
-            if (ids.isEmpty()) emptyList() else fetchUsersByIds(ids)
+            if (ids.isEmpty()) return emptyList()
+            val hidden = getMutuallyHiddenIds(userId)
+            fetchUsersByIds(ids.filter { it !in hidden })
         } catch (e: Exception) { emptyList() }
     }
 
+    /**
+     * IDs de usuarios seguidos. Filtra bloqueos para que la sección
+     * "De tus amigos" en Home y los listados de reseñas de amigos
+     * no incluyan a nadie con bloqueo activo.
+     */
     suspend fun getFollowingIds(userId: String): List<String> {
         return try {
-            firestore.collection("users")
+            val ids = firestore.collection("users")
                 .document(userId).collection("following")
                 .get().await().documents.map { it.id }
+            if (ids.isEmpty()) return emptyList()
+            val hidden = getMutuallyHiddenIds(userId)
+            ids.filter { it !in hidden }
         } catch (e: Exception) { emptyList() }
     }
 
     private suspend fun fetchUsersByIds(ids: List<String>): List<PublicUser> {
+        if (ids.isEmpty()) return emptyList()
         val chunks = ids.chunked(30)
         val result = mutableListOf<PublicUser>()
         for (chunk in chunks) {
@@ -187,6 +218,176 @@ class FirestoreService @Inject constructor(
             result += docs.toObjects(PublicUser::class.java)
         }
         return result
+    }
+
+    // =================== BLOCKING ===================
+    //
+    // Modelo:
+    //   users/{userId}/blocks/{blockedUserId}  -> { blockedUserId, createdAt }
+    //
+    // Comprobar "A bloqueó a B" = un get directo (cheap, sin índice).
+    // Para listas grandes (search, followers, following) usamos:
+    //   - getBlockedByMeIds(me)   : leer subcolección "blocks" de mi propio doc.
+    //   - getUsersWhoBlockedMeIds(me) : collectionGroup query sobre "blocks".
+    //
+    // La segunda requiere un índice en collectionGroup="blocks", campo "blockedUserId".
+
+    private fun blockRef(currentUserId: String, blockedUserId: String) =
+        firestore.collection("users")
+            .document(currentUserId)
+            .collection("blocks")
+            .document(blockedUserId)
+
+    /**
+     * Bloquea a [targetUserId] desde [currentUserId].
+     *
+     * En la misma operación batch:
+     *  1) Crea el doc en users/{currentUserId}/blocks/{targetUserId}.
+     *  2) Rompe los follows en ambas direcciones (si existían).
+     *  3) Decrementa los contadores de followers/following correspondientes.
+     *
+     * No borra reviews, likes ni comentarios: simplemente quedan filtrados al leer.
+     * Así, al desbloquear, todo vuelve a aparecer sin pérdida.
+     */
+    suspend fun blockUser(currentUserId: String, targetUserId: String) {
+        if (currentUserId.isBlank() || targetUserId.isBlank()) return
+        if (currentUserId == targetUserId) return
+
+        val batch = firestore.batch()
+
+        // 1) Crear el doc de bloqueo
+        batch.set(
+            blockRef(currentUserId, targetUserId),
+            mapOf(
+                "blockedUserId" to targetUserId,
+                "createdAt" to System.currentTimeMillis()
+            )
+        )
+
+        // 2 + 3) Romper follows en ambas direcciones si existen
+        val iFollowThem = firestore.collection("users")
+            .document(currentUserId).collection("following").document(targetUserId)
+        val iAmFollower = firestore.collection("users")
+            .document(targetUserId).collection("followers").document(currentUserId)
+
+        val theyFollowMe = firestore.collection("users")
+            .document(targetUserId).collection("following").document(currentUserId)
+        val theyAreFollower = firestore.collection("users")
+            .document(currentUserId).collection("followers").document(targetUserId)
+
+        // Comprobamos cada dirección antes de borrar para no decrementar contadores
+        // que no debían moverse.
+        val iFollowThemExists = iFollowThem.get().await().exists()
+        val theyFollowMeExists = theyFollowMe.get().await().exists()
+
+        if (iFollowThemExists) {
+            batch.delete(iFollowThem)
+            batch.delete(iAmFollower)
+            batch.update(
+                firestore.collection("users").document(currentUserId),
+                "followingCount", FieldValue.increment(-1)
+            )
+            batch.update(
+                firestore.collection("users").document(targetUserId),
+                "followersCount", FieldValue.increment(-1)
+            )
+        }
+        if (theyFollowMeExists) {
+            batch.delete(theyFollowMe)
+            batch.delete(theyAreFollower)
+            batch.update(
+                firestore.collection("users").document(targetUserId),
+                "followingCount", FieldValue.increment(-1)
+            )
+            batch.update(
+                firestore.collection("users").document(currentUserId),
+                "followersCount", FieldValue.increment(-1)
+            )
+        }
+
+        batch.commit().await()
+    }
+
+    /** Desbloquea borrando el doc. Los follows previos NO se restauran. */
+    suspend fun unblockUser(currentUserId: String, targetUserId: String) {
+        if (currentUserId.isBlank() || targetUserId.isBlank()) return
+        blockRef(currentUserId, targetUserId).delete().await()
+    }
+
+    /** True si [currentUserId] tiene bloqueado a [otherUserId]. */
+    suspend fun didIBlock(currentUserId: String, otherUserId: String): Boolean {
+        if (currentUserId.isBlank() || otherUserId.isBlank()) return false
+        return try {
+            blockRef(currentUserId, otherUserId).get().await().exists()
+        } catch (_: Exception) { false }
+    }
+
+    /** True si [otherUserId] tiene bloqueado a [currentUserId]. */
+    suspend fun didTheyBlockMe(currentUserId: String, otherUserId: String): Boolean {
+        if (currentUserId.isBlank() || otherUserId.isBlank()) return false
+        return try {
+            blockRef(otherUserId, currentUserId).get().await().exists()
+        } catch (_: Exception) { false }
+    }
+
+    /**
+     * Devuelve la relación de bloqueo desde el punto de vista de [currentUserId].
+     * Si ambos se bloquearon mutuamente, devuelve IBlockedThem (ver doc de
+     * BlockRelation para la justificación).
+     */
+    suspend fun getBlockRelation(currentUserId: String, otherUserId: String): BlockRelation {
+        if (currentUserId.isBlank() || otherUserId.isBlank() || currentUserId == otherUserId) {
+            return BlockRelation.NotBlocked
+        }
+        val iBlocked = didIBlock(currentUserId, otherUserId)
+        if (iBlocked) return BlockRelation.IBlockedThem
+        val theyBlocked = didTheyBlockMe(currentUserId, otherUserId)
+        if (theyBlocked) return BlockRelation.TheyBlockedMe
+        return BlockRelation.NotBlocked
+    }
+
+    /** IDs de usuarios bloqueados por [userId] (directo: una lectura de subcolección). */
+    suspend fun getBlockedByMeIds(userId: String): Set<String> {
+        if (userId.isBlank()) return emptySet()
+        return try {
+            firestore.collection("users")
+                .document(userId)
+                .collection("blocks")
+                .get().await()
+                .documents.map { it.id }
+                .toSet()
+        } catch (_: Exception) { emptySet() }
+    }
+
+    /**
+     * IDs de usuarios que han bloqueado a [userId].
+     * Usa collectionGroup query: requiere índice en collectionGroup "blocks"
+     * por campo "blockedUserId". Firestore te dará el enlace en el primer error.
+     */
+    suspend fun getUsersWhoBlockedMeIds(userId: String): Set<String> {
+        if (userId.isBlank()) return emptySet()
+        return try {
+            firestore.collectionGroup("blocks")
+                .whereEqualTo("blockedUserId", userId)
+                .get().await()
+                .documents.mapNotNull { doc ->
+                    // El parent de cada doc es la subcolección "blocks";
+                    // su parent.parent es el doc del usuario que bloqueó.
+                    doc.reference.parent.parent?.id
+                }
+                .toSet()
+        } catch (_: Exception) { emptySet() }
+    }
+
+    /**
+     * Conjunto unificado de IDs que deben quedar OCULTOS para [userId]
+     * en cualquier listado social: los que él bloqueó + los que le bloquearon.
+     */
+    suspend fun getMutuallyHiddenIds(userId: String): Set<String> {
+        if (userId.isBlank()) return emptySet()
+        val blockedByMe = getBlockedByMeIds(userId)
+        val blockedMe = getUsersWhoBlockedMeIds(userId)
+        return blockedByMe + blockedMe
     }
 
     // =================== RESEÑAS ===================
@@ -259,6 +460,12 @@ class FirestoreService @Inject constructor(
         }
     }
 
+    /**
+     * Reseñas recientes de los usuarios seguidos para alimentar la sección
+     * "De tus amigos" en Home. NOTA: el filtrado de bloqueos ya ocurre en
+     * getFollowingIds (que es lo que el repository llama antes de pasar
+     * los IDs aquí), así que esta función no necesita filtrar de nuevo.
+     */
     suspend fun getFriendsReviewedItems(
         followingIds: List<String>,
         mediaType: String,
@@ -398,7 +605,8 @@ class FirestoreService @Inject constructor(
 
     /**
      * Reseñas de TODOS los usuarios para un media, ordenadas por likes desc.
-     * Requiere índice (collectionGroup) — Firestore te dará un enlace en el primer error.
+     * Filtra reseñas de usuarios con bloqueo activo en cualquier dirección.
+     * Requiere índice (collectionGroup="reviews": mediaType, mediaId, likesCount, createdAt).
      */
     suspend fun getAllReviewsForMedia(
         mediaType: String,
@@ -415,8 +623,15 @@ class FirestoreService @Inject constructor(
                 .limit(limit)
                 .get().await()
 
+            // Calculamos el set de bloqueados (yo a ellos + ellos a mí) una sola vez.
+            // Pedimos algo de margen porque después filtramos, así no nos quedamos
+            // cortos si la mayoría de top results son de bloqueados.
+            val hidden = if (currentUserId.isBlank()) emptySet()
+            else getMutuallyHiddenIds(currentUserId)
+
             docs.documents.mapNotNull { d ->
                 val authorUserId = d.getString("userId") ?: return@mapNotNull null
+                if (authorUserId in hidden) return@mapNotNull null
                 val likedByMe = if (currentUserId.isBlank()) false
                 else d.reference.collection("likes")
                     .document(currentUserId).get().await().exists()
@@ -425,7 +640,10 @@ class FirestoreService @Inject constructor(
         } catch (e: Exception) { emptyList() }
     }
 
-    /** Reseñas SOLO de los amigos sobre un media, ordenadas por likes desc. */
+    /**
+     * Reseñas SOLO de los amigos sobre un media, ordenadas por likes desc.
+     * Los IDs ya vienen filtrados por bloqueo desde getFollowingIds().
+     */
     suspend fun getFriendsReviewsForMedia(
         followingIds: List<String>,
         mediaType: String,
@@ -579,8 +797,6 @@ class FirestoreService @Inject constructor(
             "updatedAt" to System.currentTimeMillis()
         )
         if (!existing.exists()) {
-            // Si solo es favorito y no estaba en library, lo guardamos sin status concreto:
-            // pero status es obligatorio en el modelo, lo metemos como "watchlist" por defecto.
             data["status"] = "watchlist"
         }
         if (title != null) data["title"] = title

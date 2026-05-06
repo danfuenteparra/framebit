@@ -1,6 +1,7 @@
 package com.example.moviebox.data.repository
 
 import com.example.moviebox.data.remote.firebase.FirestoreService
+import com.example.moviebox.data.remote.model.BlockRelation
 import com.example.moviebox.data.remote.model.FriendActivity
 import com.example.moviebox.data.remote.model.FriendReview
 import com.example.moviebox.data.remote.model.LibraryEntry
@@ -42,7 +43,28 @@ class SocialRepository @Inject constructor(
     suspend fun getFollowing(userId: String): List<PublicUser> = firestore.getFollowing(userId)
     suspend fun getFollowers(userId: String): List<PublicUser> = firestore.getFollowers(userId)
 
-    // Vistos por amigos = lo que han reseñado
+    // =================== BLOCKING ===================
+
+    /**
+     * Bloquea a otro usuario. Rompe los follows en ambas direcciones de forma atómica.
+     * No borra reviews ni likes existentes; al desbloquear todo vuelve a aparecer.
+     */
+    suspend fun blockUser(currentUserId: String, targetUserId: String) =
+        firestore.blockUser(currentUserId, targetUserId)
+
+    /** Desbloquea a un usuario. No restaura los follows previos. */
+    suspend fun unblockUser(currentUserId: String, targetUserId: String) =
+        firestore.unblockUser(currentUserId, targetUserId)
+
+    /** Devuelve la relación de bloqueo (Not / IBlockedThem / TheyBlockedMe). */
+    suspend fun getBlockRelation(currentUserId: String, otherUserId: String): BlockRelation =
+        firestore.getBlockRelation(currentUserId, otherUserId)
+
+    // =================== FRIENDS ACTIVITY ===================
+    // Vistos por amigos = lo que han reseñado.
+    // getFollowingIds ya filtra a los bloqueados, por lo que estas
+    // listas no incluyen actividad de usuarios con bloqueo activo.
+
     suspend fun getFriendsMovies(userId: String): List<FriendActivity> {
         val ids = firestore.getFollowingIds(userId)
         return firestore.getFriendsReviewedItems(ids, "movie")
@@ -58,7 +80,8 @@ class SocialRepository @Inject constructor(
         return firestore.getFriendsReviewedItems(ids, "game")
     }
 
-    // Sincronización de reseñas
+    // =================== RESEÑAS ===================
+
     suspend fun syncReview(
         userId: String,
         userName: String,
@@ -99,7 +122,7 @@ class SocialRepository @Inject constructor(
     suspend fun deleteComment(authorUserId: String, mediaType: String, mediaId: Int, commentId: String) =
         firestore.deleteComment(authorUserId, mediaType, mediaId, commentId)
 
-    // Listas de reseñas para un media
+    // Listas de reseñas para un media (ya filtran bloqueos en el FirestoreService)
     suspend fun getAllReviewsForMedia(mediaType: String, mediaId: Int, currentUserId: String): List<FriendReview> =
         firestore.getAllReviewsForMedia(mediaType, mediaId, currentUserId)
 
@@ -110,7 +133,8 @@ class SocialRepository @Inject constructor(
         return firestore.getFriendsReviewsForMedia(ids, mediaType, mediaId, currentUserId)
     }
 
-    // Top 3
+    // =================== TOP 3 ===================
+
     suspend fun syncTopItem(
         userId: String,
         mediaType: String,

@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.moviebox.auth.AuthManager
+import com.example.moviebox.data.remote.model.BlockRelation
 import com.example.moviebox.data.remote.model.LibraryEntry
 import com.example.moviebox.data.remote.model.PublicUser
 import com.example.moviebox.data.repository.SocialRepository
@@ -13,6 +14,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Item de Top 3 para mostrar (mediaType, posición, mediaId, título, póster).
+ */
 data class TopItemDisplay(
     val mediaType: String,
     val position: Int,
@@ -29,6 +33,8 @@ class UserProfileViewModel @Inject constructor(
 ) : ViewModel() {
 
     val targetUserId: String = savedStateHandle["userId"] ?: ""
+
+    // ----- Estado del perfil -----
 
     private val _user = MutableStateFlow<PublicUser?>(null)
     val user: StateFlow<PublicUser?> = _user
@@ -57,6 +63,11 @@ class UserProfileViewModel @Inject constructor(
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
 
+    // ----- Estado de bloqueo -----
+
+    private val _blockRelation = MutableStateFlow<BlockRelation>(BlockRelation.NotBlocked)
+    val blockRelation: StateFlow<BlockRelation> = _blockRelation
+
     val isOwnProfile: Boolean
         get() = targetUserId == authManager.getCachedUserId()
 
@@ -64,6 +75,12 @@ class UserProfileViewModel @Inject constructor(
         load()
     }
 
+    /**
+     * Carga inicial del perfil.
+     * Primero comprueba la relación de bloqueo: si hay bloqueo activo en cualquier
+     * dirección, NO carga top items, library ni estado de follow para evitar
+     * mostrar nada del otro usuario.
+     */
     private fun load() {
         if (targetUserId.isBlank()) {
             _loading.value = false
@@ -72,11 +89,28 @@ class UserProfileViewModel @Inject constructor(
         viewModelScope.launch {
             _loading.value = true
             try {
+                socialRepository.ensureSignedIn()
+
+                // Datos básicos del usuario (nombre, foto, contadores)
                 _user.value = socialRepository.getUser(targetUserId)
+
                 val myId = authManager.getCachedUserId()
+
+                // Relación de bloqueo (solo aplica si miramos un perfil ajeno)
+                if (myId != null && myId != targetUserId) {
+                    _blockRelation.value = socialRepository.getBlockRelation(myId, targetUserId)
+                }
+
+                // Si hay bloqueo activo, no cargamos nada más del otro usuario
+                if (_blockRelation.value !is BlockRelation.NotBlocked) {
+                    return@launch
+                }
+
+                // Estado de follow (solo si no es nuestro perfil y no hay bloqueo)
                 if (myId != null && myId != targetUserId) {
                     _isFollowing.value = socialRepository.isFollowing(myId, targetUserId)
                 }
+
                 loadTopItems()
                 loadLibrary()
             } catch (_: Exception) { }
@@ -132,20 +166,74 @@ class UserProfileViewModel @Inject constructor(
         _watchedGames.value = watched.filter { it.mediaType == "game" }
     }
 
+    /**
+     * Alterna seguir / dejar de seguir. Si hay bloqueo activo, no hace nada
+     * (la UI ya oculta el botón en ese caso, pero defendemos la lógica igual).
+     */
     fun toggleFollow() {
         val myId = authManager.getCachedUserId() ?: return
         if (myId == targetUserId) return
+        if (_blockRelation.value !is BlockRelation.NotBlocked) return
         viewModelScope.launch {
             try {
                 if (_isFollowing.value) {
                     socialRepository.unfollow(myId, targetUserId)
                     _isFollowing.value = false
-                    _user.value = _user.value?.let { it.copy(followersCount = (it.followersCount - 1).coerceAtLeast(0)) }
+                    _user.value = _user.value?.let {
+                        it.copy(followersCount = (it.followersCount - 1).coerceAtLeast(0))
+                    }
                 } else {
                     socialRepository.follow(myId, targetUserId)
                     _isFollowing.value = true
-                    _user.value = _user.value?.let { it.copy(followersCount = it.followersCount + 1) }
+                    _user.value = _user.value?.let {
+                        it.copy(followersCount = it.followersCount + 1)
+                    }
                 }
+            } catch (_: Exception) { }
+        }
+    }
+
+    /**
+     * Bloquea al usuario del perfil actual. Tras bloquear:
+     *  - El estado pasa a IBlockedThem.
+     *  - Se limpian top items y library del UI (no se mostraban ya, pero por si acaso).
+     *  - El isFollowing queda en false (se rompe el follow en el backend).
+     *  - Se actualiza el contador de seguidores en el modelo en memoria.
+     */
+    fun blockUser() {
+        val myId = authManager.getCachedUserId() ?: return
+        if (myId == targetUserId) return
+        viewModelScope.launch {
+            try {
+                socialRepository.ensureSignedIn()
+                socialRepository.blockUser(myId, targetUserId)
+                _blockRelation.value = BlockRelation.IBlockedThem
+                _isFollowing.value = false
+                _topMovies.value = listOf(null, null, null)
+                _topTvShows.value = listOf(null, null, null)
+                _topGames.value = listOf(null, null, null)
+                _watchedMovies.value = emptyList()
+                _watchedTvShows.value = emptyList()
+                _watchedGames.value = emptyList()
+            } catch (_: Exception) { }
+        }
+    }
+
+    /**
+     * Desbloquea al usuario y recarga el perfil completo.
+     * No restaura los follows previos (es decisión consciente: si te bloqueé
+     * y te desbloqueo, vuelves a empezar de cero).
+     */
+    fun unblockUser() {
+        val myId = authManager.getCachedUserId() ?: return
+        if (myId == targetUserId) return
+        viewModelScope.launch {
+            try {
+                socialRepository.ensureSignedIn()
+                socialRepository.unblockUser(myId, targetUserId)
+                _blockRelation.value = BlockRelation.NotBlocked
+                // Recargamos todo para repoblar top items y library
+                load()
             } catch (_: Exception) { }
         }
     }
