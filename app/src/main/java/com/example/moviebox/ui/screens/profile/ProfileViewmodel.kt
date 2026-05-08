@@ -9,7 +9,6 @@ import com.example.moviebox.data.local.entity.TopItemEntity
 import com.example.moviebox.data.remote.dto.GameDto
 import com.example.moviebox.data.remote.dto.MovieDto
 import com.example.moviebox.data.remote.dto.TvShowDto
-import com.example.moviebox.data.remote.model.LibraryEntry
 import com.example.moviebox.data.remote.model.PublicUser
 import com.example.moviebox.data.repository.GameRepository
 import com.example.moviebox.data.repository.MovieRepository
@@ -21,6 +20,26 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/**
+ * Contadores agregados del perfil propio. Mismo shape que en UserProfileViewModel
+ * para que la UI pueda usar el mismo SectionButton.
+ */
+data class ProfileCounts(
+    val watchedMovies: Int = 0,
+    val watchedTv: Int = 0,
+    val watchedGames: Int = 0,
+    val reviewMovies: Int = 0,
+    val reviewTv: Int = 0,
+    val reviewGames: Int = 0,
+    val watchlistMovies: Int = 0,
+    val watchlistTv: Int = 0,
+    val watchlistGames: Int = 0
+) {
+    val totalWatched: Int get() = watchedMovies + watchedTv + watchedGames
+    val totalReviews: Int get() = reviewMovies + reviewTv + reviewGames
+    val totalWatchlist: Int get() = watchlistMovies + watchlistTv + watchlistGames
+}
 
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
@@ -48,15 +67,14 @@ class ProfileViewModel @Inject constructor(
     private val _publicUser = MutableStateFlow<PublicUser?>(null)
     val publicUser: StateFlow<PublicUser?> = _publicUser
 
-    // Vistas (de Firestore)
-    private val _watchedMovies = MutableStateFlow<List<LibraryEntry>>(emptyList())
-    val watchedMovies: StateFlow<List<LibraryEntry>> = _watchedMovies
-
-    private val _watchedTvShows = MutableStateFlow<List<LibraryEntry>>(emptyList())
-    val watchedTvShows: StateFlow<List<LibraryEntry>> = _watchedTvShows
-
-    private val _watchedGames = MutableStateFlow<List<LibraryEntry>>(emptyList())
-    val watchedGames: StateFlow<List<LibraryEntry>> = _watchedGames
+    /**
+     * Contadores agregados (totales y por mediaType) para el bloque compactado.
+     * Sustituye a las antiguas listas _watchedMovies/TvShows/Games del UI:
+     * las listas completas se cargan ahora en las pantallas hijas
+     * (UserWatchedScreen / UserReviewsScreen / UserWatchlistScreen).
+     */
+    private val _counts = MutableStateFlow(ProfileCounts())
+    val counts: StateFlow<ProfileCounts> = _counts
 
     // Contadores sociales (atajos cómodos para la UI)
     private val _followersCount = MutableStateFlow(0)
@@ -100,10 +118,14 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    /** Refresca PublicUser (bio/links/foto/contadores) y la library de vistos. */
+    /**
+     * Refresca PublicUser (bio/links/foto/contadores), counts agregados,
+     * library y reviews. Se llama al ON_RESUME de la pantalla.
+     */
     fun refreshAll() {
         if (currentUserId.isBlank()) return
         viewModelScope.launch {
+            // PublicUser y contadores sociales
             try {
                 val user = socialRepository.getUser(currentUserId)
                 if (user != null) {
@@ -112,12 +134,30 @@ class ProfileViewModel @Inject constructor(
                     _followingCount.value = user.followingCount
                 }
             } catch (_: Exception) { }
+
+            // Library + reviews -> counts agregados
             try {
-                val all = socialRepository.getLibrary(currentUserId)
-                val watched = all.filter { it.status == "watched" }
-                _watchedMovies.value = watched.filter { it.mediaType == "movie" }
-                _watchedTvShows.value = watched.filter { it.mediaType == "tv" }
-                _watchedGames.value = watched.filter { it.mediaType == "game" }
+                val library = socialRepository.getLibrary(currentUserId)
+                val reviews = try {
+                    socialRepository.getReviewsByUser(currentUserId)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+                val watched = library.filter { it.status == "watched" }
+                val watchlist = library.filter { it.status == "watchlist" }
+
+                _counts.value = ProfileCounts(
+                    watchedMovies = watched.count { it.mediaType == "movie" },
+                    watchedTv = watched.count { it.mediaType == "tv" },
+                    watchedGames = watched.count { it.mediaType == "game" },
+                    reviewMovies = reviews.count { it.mediaType == "movie" },
+                    reviewTv = reviews.count { it.mediaType == "tv" },
+                    reviewGames = reviews.count { it.mediaType == "game" },
+                    watchlistMovies = watchlist.count { it.mediaType == "movie" },
+                    watchlistTv = watchlist.count { it.mediaType == "tv" },
+                    watchlistGames = watchlist.count { it.mediaType == "game" }
+                )
             } catch (_: Exception) { }
         }
     }

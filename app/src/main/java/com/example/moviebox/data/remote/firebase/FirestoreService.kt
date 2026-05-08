@@ -514,6 +514,38 @@ class FirestoreService @Inject constructor(
         return result.sortedByDescending { it.watchedAt }
     }
 
+    /**
+     * Devuelve TODAS las reseñas de un usuario concreto.
+     * Lectura directa de la subcolección users/{userId}/reviews — no es collectionGroup,
+     * así que no requiere índice especial.
+     *
+     * Se usa para:
+     *  - Calcular los counts en el perfil compactado.
+     *  - Construir las secciones de pelis/series/juegos en UserReviewsScreen.
+     *  - Saber qué items de "visto" tienen reseña asociada (para badge de nota).
+     *
+     * No filtra bloqueos: el caller decide. En la práctica solo se llama desde
+     * UserProfileViewModel cuando ya se ha comprobado que NO hay bloqueo activo.
+     */
+    suspend fun getReviewsByUser(authorUserId: String): List<FriendReview> {
+        if (authorUserId.isBlank()) return emptyList()
+        return try {
+            val docs = firestore.collection("users")
+                .document(authorUserId)
+                .collection("reviews")
+                .orderBy("createdAt", Query.Direction.DESCENDING)
+                .get().await()
+
+            docs.documents.mapNotNull { d ->
+                val mediaType = d.getString("mediaType") ?: return@mapNotNull null
+                val mediaId = (d.getLong("mediaId") ?: return@mapNotNull null).toInt()
+                // No nos interesa likedByMe aquí (es una vista de perfil ajeno),
+                // así que pasamos false para evitar lecturas extra por cada review.
+                mapReviewDoc(d, authorUserId, mediaType, mediaId, likedByMe = false)
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
     // =================== INTERACCIÓN: LIKES / COMMENTS ===================
 
     suspend fun getReviewById(
@@ -682,6 +714,7 @@ class FirestoreService @Inject constructor(
             likesCount = (d.getLong("likesCount") ?: 0L).toInt(),
             commentsCount = (d.getLong("commentsCount") ?: 0L).toInt(),
             likedByMe = likedByMe
+            // entryKind se queda con default REVIEW (los doc en /reviews son reseñas reales)
         )
     }
 

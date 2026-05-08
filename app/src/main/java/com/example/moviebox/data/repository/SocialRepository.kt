@@ -185,4 +185,11 @@ class SocialRepository @Inject constructor(
 
     suspend fun getLibrary(userId: String): List<LibraryEntry> =
         firestore.getLibrary(userId)
+
+    /**
+     * Devuelve todas las reseñas del usuario [userId], ordenadas por createdAt desc.
+     * Delegado directo a FirestoreService.getReviewsByUser.
+     */
+    suspend fun getReviewsByUser(userId: String): List<FriendReview> =
+        firestore.getReviewsByUser(userId)
 }

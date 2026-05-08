@@ -3,25 +3,28 @@ package com.example.moviebox.ui.screens.userprofile
 import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PersonRemove
+import androidx.compose.material.icons.filled.RateReview
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -35,7 +38,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.api.TmdbApiService
 import com.example.moviebox.data.remote.model.BlockRelation
-import com.example.moviebox.data.remote.model.LibraryEntry
 import com.example.moviebox.data.remote.model.PublicUser
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
@@ -45,8 +47,18 @@ import com.example.moviebox.ui.theme.MovieBoxSurface
 /**
  * Pantalla de perfil de OTRO usuario (cuando es propio se ve por ProfileScreen).
  *
+ * Estructura compactada:
+ *   - Cabecera (avatar, bio, links, follow)
+ *   - Top 3 (películas / series / juegos)
+ *   - 3 botones grandes con totales:
+ *       Visto / Jugado · N   →  UserWatchedScreen
+ *       Reseñas         · N   →  UserReviewsScreen
+ *       Watchlist       · N   →  UserWatchlistScreen
+ *
+ * Las listas completas ya no se cargan aquí: cada pantalla hija las pide al entrar.
+ *
  * Tres estados principales según BlockRelation:
- *  - NotBlocked   : todo el perfil visible (top items, library, follow, etc.).
+ *  - NotBlocked   : todo el perfil visible.
  *  - IBlockedThem : header mínimo + tarjeta "has bloqueado" + botón desbloquear.
  *  - TheyBlockedMe: header mínimo + tarjeta "no puedes ver este perfil".
  */
@@ -59,6 +71,9 @@ fun UserProfileScreen(
     onMovieClick: (Int) -> Unit,
     onTvShowClick: (Int) -> Unit,
     onGameClick: (Int) -> Unit,
+    onNavigateToWatched: (userId: String) -> Unit,
+    onNavigateToReviews: (userId: String) -> Unit,
+    onNavigateToWatchlist: (userId: String) -> Unit,
     viewModel: UserProfileViewModel = hiltViewModel()
 ) {
     val user by viewModel.user.collectAsStateWithLifecycle()
@@ -68,9 +83,7 @@ fun UserProfileScreen(
     val topMovies by viewModel.topMovies.collectAsStateWithLifecycle()
     val topTvShows by viewModel.topTvShows.collectAsStateWithLifecycle()
     val topGames by viewModel.topGames.collectAsStateWithLifecycle()
-    val watchedMovies by viewModel.watchedMovies.collectAsStateWithLifecycle()
-    val watchedTvShows by viewModel.watchedTvShows.collectAsStateWithLifecycle()
-    val watchedGames by viewModel.watchedGames.collectAsStateWithLifecycle()
+    val counts by viewModel.counts.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // Estado UI local: menú de tres puntos y diálogo de confirmación de bloqueo
@@ -96,9 +109,6 @@ fun UserProfileScreen(
                 },
                 actions = {
                     // Menú de tres puntos: bloquear / desbloquear.
-                    // Solo visible si no es nuestro propio perfil y conocemos al usuario.
-                    // En estado TheyBlockedMe NO se muestra: si me bloquearon, no puedo
-                    // hacer nada útil contra ellos desde aquí.
                     if (!viewModel.isOwnProfile && user != null
                         && blockRelation !is BlockRelation.TheyBlockedMe) {
                         Box {
@@ -209,9 +219,7 @@ fun UserProfileScreen(
                     topMovies = topMovies,
                     topTvShows = topTvShows,
                     topGames = topGames,
-                    watchedMovies = watchedMovies,
-                    watchedTvShows = watchedTvShows,
-                    watchedGames = watchedGames,
+                    counts = counts,
                     innerPadding = innerPadding,
                     onToggleFollow = { viewModel.toggleFollow() },
                     onNavigateToFollowers = onNavigateToFollowers,
@@ -222,7 +230,10 @@ fun UserProfileScreen(
                             context.startActivity(Intent(Intent.ACTION_VIEW, normalized.toUri()))
                         }
                     },
-                    onMediaClick = { mediaType, mediaId -> navigateToMedia(mediaType, mediaId) }
+                    onMediaClick = { mediaType, mediaId -> navigateToMedia(mediaType, mediaId) },
+                    onWatchedClick = { onNavigateToWatched(u.userId) },
+                    onReviewsClick = { onNavigateToReviews(u.userId) },
+                    onWatchlistClick = { onNavigateToWatchlist(u.userId) }
                 )
             }
         }
@@ -342,7 +353,6 @@ private fun BlockedHeaderOnly(
 
 /**
  * Contenido completo del perfil cuando no hay bloqueo.
- * Extraído del Composable principal para que el branching de bloqueo se lea claro.
  */
 @Composable
 private fun FullProfileContent(
@@ -352,15 +362,16 @@ private fun FullProfileContent(
     topMovies: List<TopItemDisplay?>,
     topTvShows: List<TopItemDisplay?>,
     topGames: List<TopItemDisplay?>,
-    watchedMovies: List<LibraryEntry>,
-    watchedTvShows: List<LibraryEntry>,
-    watchedGames: List<LibraryEntry>,
+    counts: ProfileCounts,
     innerPadding: PaddingValues,
     onToggleFollow: () -> Unit,
     onNavigateToFollowers: (String) -> Unit,
     onNavigateToFollowing: (String) -> Unit,
     onLinkClick: (String) -> Unit,
-    onMediaClick: (String, Int) -> Unit
+    onMediaClick: (String, Int) -> Unit,
+    onWatchedClick: () -> Unit,
+    onReviewsClick: () -> Unit,
+    onWatchlistClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -505,27 +516,90 @@ private fun FullProfileContent(
 
         Spacer(modifier = Modifier.height(24.dp))
         HorizontalDivider(color = MovieBoxSurface, modifier = Modifier.padding(horizontal = 16.dp))
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Visto/jugado
-        Text(
-            text = "Visto/jugado de " + user.name,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = MovieBoxOnBackground,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            textAlign = TextAlign.Start
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        WatchedRow("Películas", watchedMovies, "movie") { id -> onMediaClick("movie", id) }
-        Spacer(modifier = Modifier.height(12.dp))
-        WatchedRow("Series", watchedTvShows, "tv") { id -> onMediaClick("tv", id) }
-        Spacer(modifier = Modifier.height(12.dp))
-        WatchedRow("Juegos", watchedGames, "game") { id -> onMediaClick("game", id) }
+        // Bloque compactado: 3 botones grandes con totales
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            SectionButton(
+                icon = Icons.Default.Visibility,
+                label = "Visto / Jugado",
+                count = counts.totalWatched,
+                onClick = onWatchedClick
+            )
+            SectionButton(
+                icon = Icons.Default.RateReview,
+                label = "Reseñas",
+                count = counts.totalReviews,
+                onClick = onReviewsClick
+            )
+            SectionButton(
+                icon = Icons.Default.Bookmark,
+                label = "Watchlist",
+                count = counts.totalWatchlist,
+                onClick = onWatchlistClick
+            )
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+/**
+ * Tarjeta horizontal con icono, etiqueta, total y flecha. Se usa para los
+ * 3 accesos a las pantallas hijas (Visto/Reseñas/Watchlist).
+ */
+@Composable
+private fun SectionButton(
+    icon: ImageVector,
+    label: String,
+    count: Int,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MovieBoxSurface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MovieBoxPrimary,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(14.dp))
+            Text(
+                text = label,
+                color = MovieBoxOnBackground,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = count.toString(),
+                color = MovieBoxOnBackground.copy(alpha = 0.7f),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MovieBoxOnBackground.copy(alpha = 0.5f)
+            )
+        }
     }
 }
 
@@ -583,67 +657,6 @@ private fun ClickableTopRow(
                             Text("-", color = MovieBoxOnBackground.copy(alpha = 0.3f), fontSize = 24.sp)
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Fila de pelis/series/juegos vistos. Se oculta entera si la lista está vacía.
- */
-@Composable
-private fun WatchedRow(
-    label: String,
-    entries: List<LibraryEntry>,
-    mediaType: String,
-    onItemClick: (Int) -> Unit
-) {
-    if (entries.isEmpty()) return
-
-    val aspectRatio = 2f / 3f
-    val itemWidth = 100.dp
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = label,
-                fontSize = 14.sp,
-                color = MovieBoxPrimary,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "${entries.size}",
-                fontSize = 12.sp,
-                color = MovieBoxOnBackground.copy(alpha = 0.5f)
-            )
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(entries, key = { it.mediaId }) { entry ->
-                Card(
-                    modifier = Modifier
-                        .width(itemWidth)
-                        .aspectRatio(aspectRatio)
-                        .clickable { onItemClick(entry.mediaId) },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = MovieBoxSurface)
-                ) {
-                    val imageUrl = if (mediaType == "game") entry.posterPath
-                    else TmdbApiService.getImageUrl(entry.posterPath)
-                    AsyncImage(
-                        model = imageUrl,
-                        contentDescription = entry.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
                 }
             }
         }

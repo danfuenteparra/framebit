@@ -39,6 +39,12 @@ import com.example.moviebox.ui.screens.tvshowdetail.TvShowDetailScreen
 import com.example.moviebox.ui.screens.tvshows.TvShowsScreen
 import com.example.moviebox.ui.screens.userlist.UserListScreen
 import com.example.moviebox.ui.screens.userprofile.UserProfileScreen
+
+import com.example.moviebox.ui.screens.userprofile.sections.UserWatchedScreen
+import com.example.moviebox.ui.screens.userprofile.sections.UserReviewsScreen
+import com.example.moviebox.ui.screens.userprofile.sections.UserWatchlistScreen
+import com.example.moviebox.ui.screens.userprofile.sections.UserMediaListScreen
+import com.example.moviebox.ui.screens.userprofile.sections.buildReviewId
 import com.example.moviebox.ui.screens.usersearch.UserSearchScreen
 import com.example.moviebox.ui.screens.watchlist.WatchlistScreen
 import com.example.moviebox.ui.screens.reviewdetail.ReviewDetailScreen
@@ -197,9 +203,93 @@ fun AppNavigation(
                     },
                     onMovieClick = { id -> navController.navigate(Screen.MovieDetail.createRoute(id)) },
                     onTvShowClick = { id -> navController.navigate(Screen.TvShowDetail.createRoute(id)) },
-                    onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) }
+                    onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) },
+                    onNavigateToWatched = { id ->
+                        navController.navigate(Screen.UserWatched.createRoute(id)) },
+                    onNavigateToReviews = { id ->
+                        navController.navigate(Screen.UserReviews.createRoute(id)) },
+                    onNavigateToWatchlist = { id ->
+                        navController.navigate(Screen.UserWatchlist.createRoute(id)) }
                 )
             }
+            composable(
+                route = Screen.UserWatched.route,
+                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val userId = backStackEntry.arguments?.getString("userId").orEmpty()
+                UserWatchedScreen(
+                    userName = "",
+                    onBack = { navController.popBackStack() },
+                    onItemClick = { mediaType, mediaId ->
+                        val reviewId = buildReviewId(userId, mediaType, mediaId)
+                        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
+                    },
+                    onSeeAll = { mediaType ->
+                        navController.navigate(
+                            Screen.UserMediaList.createRoute(userId, "watched", mediaType)
+                        )
+                    }
+                )
+            }
+
+            composable(
+                route = Screen.UserReviews.route,
+                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val userId = backStackEntry.arguments?.getString("userId").orEmpty()
+                UserReviewsScreen(
+                    userName = "",
+                    onBack = { navController.popBackStack() },
+                    onItemClick = { mediaType, mediaId ->
+                        val reviewId = buildReviewId(userId, mediaType, mediaId)
+                        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
+                    },
+                    onSeeAll = { mediaType ->
+                        navController.navigate(
+                            Screen.UserMediaList.createRoute(userId, "reviews", mediaType)
+                        )
+                    }
+                )
+            }
+
+            composable(
+                route = Screen.UserWatchlist.route,
+                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val userId = backStackEntry.arguments?.getString("userId").orEmpty()
+                UserWatchlistScreen(
+                    userName = "",
+                    onBack = { navController.popBackStack() },
+                    onItemClick = { mediaType, mediaId ->
+                        val reviewId = buildReviewId(userId, mediaType, mediaId)
+                        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
+                    },
+                    onSeeAll = { mediaType ->
+                        navController.navigate(
+                            Screen.UserMediaList.createRoute(userId, "watchlist", mediaType)
+                        )
+                    }
+                )
+            }
+
+            composable(
+                route = Screen.UserMediaList.route,
+                arguments = listOf(
+                    navArgument("userId") { type = NavType.StringType },
+                    navArgument("source") { type = NavType.StringType },
+                    navArgument("mediaType") { type = NavType.StringType }
+                )
+            ) { backStackEntry ->
+                val userId = backStackEntry.arguments?.getString("userId").orEmpty()
+                UserMediaListScreen(
+                    onBack = { navController.popBackStack() },
+                    onItemClick = { mediaType, mediaId ->
+                        val reviewId = buildReviewId(userId, mediaType, mediaId)
+                        navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
+                    }
+                )
+            }
+
 
             composable(
                 route = Screen.UserList.route,

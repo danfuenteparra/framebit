@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.moviebox.auth.AuthManager
 import com.example.moviebox.data.remote.model.BlockRelation
-import com.example.moviebox.data.remote.model.LibraryEntry
 import com.example.moviebox.data.remote.model.PublicUser
 import com.example.moviebox.data.repository.SocialRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,6 +23,30 @@ data class TopItemDisplay(
     val title: String,
     val posterPath: String?
 )
+
+/**
+ * Contadores agregados del perfil que se muestran en los 3 botones grandes
+ * (Visto/Jugado, Reseñas, Watchlist) y, desglosados por mediaType, en cada
+ * una de las pantallas hijas (UserWatchedScreen, etc.).
+ *
+ * Calculados en el VM a partir de la library y las reseñas del usuario,
+ * con una sola lectura por colección.
+ */
+data class ProfileCounts(
+    val watchedMovies: Int = 0,
+    val watchedTv: Int = 0,
+    val watchedGames: Int = 0,
+    val reviewMovies: Int = 0,
+    val reviewTv: Int = 0,
+    val reviewGames: Int = 0,
+    val watchlistMovies: Int = 0,
+    val watchlistTv: Int = 0,
+    val watchlistGames: Int = 0
+) {
+    val totalWatched: Int get() = watchedMovies + watchedTv + watchedGames
+    val totalReviews: Int get() = reviewMovies + reviewTv + reviewGames
+    val totalWatchlist: Int get() = watchlistMovies + watchlistTv + watchlistGames
+}
 
 @HiltViewModel
 class UserProfileViewModel @Inject constructor(
@@ -51,14 +74,14 @@ class UserProfileViewModel @Inject constructor(
     private val _topGames = MutableStateFlow<List<TopItemDisplay?>>(listOf(null, null, null))
     val topGames: StateFlow<List<TopItemDisplay?>> = _topGames
 
-    private val _watchedMovies = MutableStateFlow<List<LibraryEntry>>(emptyList())
-    val watchedMovies: StateFlow<List<LibraryEntry>> = _watchedMovies
-
-    private val _watchedTvShows = MutableStateFlow<List<LibraryEntry>>(emptyList())
-    val watchedTvShows: StateFlow<List<LibraryEntry>> = _watchedTvShows
-
-    private val _watchedGames = MutableStateFlow<List<LibraryEntry>>(emptyList())
-    val watchedGames: StateFlow<List<LibraryEntry>> = _watchedGames
+    /**
+     * Contadores agregados de Visto/Reseñas/Watchlist (totales y por mediaType).
+     * Sustituye a las listas _watchedMovies/TvShows/Games del diseño anterior:
+     * ya no se cargan listas completas en el perfil — eso lo hacen las
+     * pantallas hijas cuando el usuario pulsa cada bloque.
+     */
+    private val _counts = MutableStateFlow(ProfileCounts())
+    val counts: StateFlow<ProfileCounts> = _counts
 
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
@@ -112,7 +135,7 @@ class UserProfileViewModel @Inject constructor(
                 }
 
                 loadTopItems()
-                loadLibrary()
+                loadCounts()
             } catch (_: Exception) { }
             finally {
                 _loading.value = false
@@ -154,16 +177,36 @@ class UserProfileViewModel @Inject constructor(
         _topGames.value = games
     }
 
-    private suspend fun loadLibrary() {
-        val all = try {
+    /**
+     * Carga library + reseñas y calcula los 9 contadores (3 secciones x 3 mediaTypes).
+     * Las listas completas no se guardan: las pantallas hijas las cargarán bajo demanda.
+     */
+    private suspend fun loadCounts() {
+        val library = try {
             socialRepository.getLibrary(targetUserId)
         } catch (_: Exception) {
             emptyList()
         }
-        val watched = all.filter { it.status == "watched" }
-        _watchedMovies.value = watched.filter { it.mediaType == "movie" }
-        _watchedTvShows.value = watched.filter { it.mediaType == "tv" }
-        _watchedGames.value = watched.filter { it.mediaType == "game" }
+        val reviews = try {
+            socialRepository.getReviewsByUser(targetUserId)
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        val watched = library.filter { it.status == "watched" }
+        val watchlist = library.filter { it.status == "watchlist" }
+
+        _counts.value = ProfileCounts(
+            watchedMovies = watched.count { it.mediaType == "movie" },
+            watchedTv = watched.count { it.mediaType == "tv" },
+            watchedGames = watched.count { it.mediaType == "game" },
+            reviewMovies = reviews.count { it.mediaType == "movie" },
+            reviewTv = reviews.count { it.mediaType == "tv" },
+            reviewGames = reviews.count { it.mediaType == "game" },
+            watchlistMovies = watchlist.count { it.mediaType == "movie" },
+            watchlistTv = watchlist.count { it.mediaType == "tv" },
+            watchlistGames = watchlist.count { it.mediaType == "game" }
+        )
     }
 
     /**
@@ -196,9 +239,8 @@ class UserProfileViewModel @Inject constructor(
     /**
      * Bloquea al usuario del perfil actual. Tras bloquear:
      *  - El estado pasa a IBlockedThem.
-     *  - Se limpian top items y library del UI (no se mostraban ya, pero por si acaso).
+     *  - Se limpian counters y top items del UI.
      *  - El isFollowing queda en false (se rompe el follow en el backend).
-     *  - Se actualiza el contador de seguidores en el modelo en memoria.
      */
     fun blockUser() {
         val myId = authManager.getCachedUserId() ?: return
@@ -212,9 +254,7 @@ class UserProfileViewModel @Inject constructor(
                 _topMovies.value = listOf(null, null, null)
                 _topTvShows.value = listOf(null, null, null)
                 _topGames.value = listOf(null, null, null)
-                _watchedMovies.value = emptyList()
-                _watchedTvShows.value = emptyList()
-                _watchedGames.value = emptyList()
+                _counts.value = ProfileCounts()
             } catch (_: Exception) { }
         }
     }
@@ -232,7 +272,7 @@ class UserProfileViewModel @Inject constructor(
                 socialRepository.ensureSignedIn()
                 socialRepository.unblockUser(myId, targetUserId)
                 _blockRelation.value = BlockRelation.NotBlocked
-                // Recargamos todo para repoblar top items y library
+                // Recargamos todo para repoblar top items y counters
                 load()
             } catch (_: Exception) { }
         }

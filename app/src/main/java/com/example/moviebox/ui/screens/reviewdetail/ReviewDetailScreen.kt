@@ -52,10 +52,24 @@ fun ReviewDetailScreen(
 
     var commentText by remember { mutableStateOf("") }
 
+    // Si la reseña es minimal (no existe doc en Firestore, solo entrada de
+    // library), ocultamos la barra de comentarios y el botón de like:
+    // no hay doc al que asociar likes ni comentarios.
+    val r = review
+    val isMinimal = r?.isMinimal == true
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Reseña", color = MovieBoxOnBackground, fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        // Cuando es minimal cambiamos el título para que el
+                        // usuario entienda que no es una "reseña" propiamente.
+                        text = if (isMinimal) "Detalle" else "Reseña",
+                        color = MovieBoxOnBackground,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = MovieBoxOnBackground)
@@ -65,7 +79,8 @@ fun ReviewDetailScreen(
             )
         },
         bottomBar = {
-            if (review != null) {
+            // Barra de comentar SOLO en reseñas reales con doc en Firestore.
+            if (r != null && !isMinimal) {
                 CommentInputBar(
                     value = commentText,
                     onValueChange = { commentText = it },
@@ -82,11 +97,10 @@ fun ReviewDetailScreen(
             loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MovieBoxPrimary)
             }
-            review == null -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            r == null -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("Reseña no disponible", color = MovieBoxOnBackground)
             }
             else -> {
-                val r = review!!
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentPadding = PaddingValues(bottom = 16.dp)
@@ -98,32 +112,37 @@ fun ReviewDetailScreen(
                             onUserClick = { onNavigateToUser(r.userId) },
                             onLikeClick = { viewModel.toggleLike() }
                         )
-                        HorizontalDivider(color = MovieBoxSurface)
-                        Text(
-                            text = "Comentarios (${comments.size})",
-                            color = MovieBoxOnBackground,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 15.sp,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                    if (comments.isEmpty()) {
-                        item {
+                        // Bloque de comentarios solo en modo no-minimal
+                        if (!isMinimal) {
+                            HorizontalDivider(color = MovieBoxSurface)
                             Text(
-                                text = "Sé el primero en comentar.",
-                                color = MovieBoxOnBackground.copy(alpha = 0.5f),
-                                fontSize = 13.sp,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                text = "Comentarios (${comments.size})",
+                                color = MovieBoxOnBackground,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                modifier = Modifier.padding(16.dp)
                             )
                         }
-                    } else {
-                        items(items = comments, key = { it.commentId }) { c ->
-                            CommentRow(
-                                comment = c,
-                                isOwn = viewModel.isOwnComment(c),
-                                onUserClick = { onNavigateToUser(c.userId) },
-                                onDelete = { viewModel.deleteComment(c.commentId) }
-                            )
+                    }
+                    if (!isMinimal) {
+                        if (comments.isEmpty()) {
+                            item {
+                                Text(
+                                    text = "Sé el primero en comentar.",
+                                    color = MovieBoxOnBackground.copy(alpha = 0.5f),
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
+                        } else {
+                            items(items = comments, key = { it.commentId }) { c ->
+                                CommentRow(
+                                    comment = c,
+                                    isOwn = viewModel.isOwnComment(c),
+                                    onUserClick = { onNavigateToUser(c.userId) },
+                                    onDelete = { viewModel.deleteComment(c.commentId) }
+                                )
+                            }
                         }
                     }
                 }
@@ -218,7 +237,7 @@ private fun ReviewHeader(
             )
         }
 
-        // Rating + comentario (solo si no es minimal)
+        // Rating + comentario + like SOLO si no es minimal
         if (!review.isMinimal) {
             Spacer(Modifier.height(12.dp))
             review.rating?.let { rating ->
@@ -233,7 +252,7 @@ private fun ReviewHeader(
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = String.format("%.1f", rating),
+                        text = String.format(Locale.getDefault(), "%.1f", rating),
                         color = MovieBoxOnBackground,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold
@@ -249,24 +268,24 @@ private fun ReviewHeader(
                     lineHeight = 20.sp
                 )
             }
-        }
 
-        Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
 
-        // Like
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onLikeClick) {
-                Icon(
-                    imageVector = if (review.likedByMe) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = "Me gusta",
-                    tint = if (review.likedByMe) MovieBoxPrimary else MovieBoxOnBackground
+            // Like
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onLikeClick) {
+                    Icon(
+                        imageVector = if (review.likedByMe) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = "Me gusta",
+                        tint = if (review.likedByMe) MovieBoxPrimary else MovieBoxOnBackground
+                    )
+                }
+                Text(
+                    text = "${review.likesCount} me gusta",
+                    color = MovieBoxOnBackground.copy(alpha = 0.7f),
+                    fontSize = 13.sp
                 )
             }
-            Text(
-                text = "${review.likesCount} me gusta",
-                color = MovieBoxOnBackground.copy(alpha = 0.7f),
-                fontSize = 13.sp
-            )
         }
     }
 }

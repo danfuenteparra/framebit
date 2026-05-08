@@ -35,4 +35,33 @@ sealed class Screen(val route: String) {
     object ReviewDetail : Screen("review_detail/{reviewId}") {
         fun createRoute(reviewId: String) = "review_detail/$reviewId"
     }
+
+    // ---- Pantallas compactadas del perfil ajeno ----
+    // Cada una agrupa por tipo (películas/series/juegos) con un preview por sección
+    // y botón "Ver todas" que abre UserMediaList con la lista completa.
+
+    /** Resumen de "Visto/Jugado" del usuario, agrupado por tipo de media. */
+    object UserWatched : Screen("user_watched/{userId}") {
+        fun createRoute(userId: String) = "user_watched/$userId"
+    }
+
+    /** Resumen de reseñas del usuario, agrupado por tipo de media. */
+    object UserReviews : Screen("user_reviews/{userId}") {
+        fun createRoute(userId: String) = "user_reviews/$userId"
+    }
+
+    /** Resumen de la watchlist del usuario, agrupado por tipo de media. */
+    object UserWatchlist : Screen("user_watchlist/{userId}") {
+        fun createRoute(userId: String) = "user_watchlist/$userId"
+    }
+
+    /**
+     * Lista completa de un solo grupo (mediaType) dentro de una sección (source).
+     * source: "watched" | "reviews" | "watchlist"
+     * mediaType: "movie" | "tv" | "game"
+     */
+    object UserMediaList : Screen("user_media_list/{userId}/{source}/{mediaType}") {
+        fun createRoute(userId: String, source: String, mediaType: String) =
+            "user_media_list/$userId/$source/$mediaType"
+    }
 }
