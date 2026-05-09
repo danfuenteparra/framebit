@@ -390,6 +390,21 @@ class FirestoreService @Inject constructor(
         return blockedByMe + blockedMe
     }
 
+    /**
+     * Devuelve los datos completos (PublicUser) de los usuarios bloqueados por [userId].
+     * Combina:
+     *   1) IDs desde la subcolección users/{userId}/blocks
+     *   2) Lectura batched de los docs de users con whereIn (en lotes de 30).
+     *
+     * Solo se usa en la pantalla "Usuarios bloqueados" del perfil propio.
+     */
+    suspend fun getBlockedUsers(userId: String): List<PublicUser> {
+        if (userId.isBlank()) return emptyList()
+        val ids = getBlockedByMeIds(userId).toList()
+        if (ids.isEmpty()) return emptyList()
+        return fetchUsersByIds(ids)
+    }
+
     // =================== RESEÑAS ===================
 
     private fun reviewRef(authorUserId: String, mediaType: String, mediaId: Int) =

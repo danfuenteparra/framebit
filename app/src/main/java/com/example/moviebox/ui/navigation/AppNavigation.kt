@@ -27,6 +27,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.moviebox.ui.screens.review.AddReviewScreen
+import com.example.moviebox.ui.screens.blockedusers.BlockedUsersScreen
 import com.example.moviebox.ui.screens.editprofile.EditProfileScreen
 import com.example.moviebox.ui.screens.games.GamesScreen
 import com.example.moviebox.ui.screens.gamedetail.GameDetailScreen
@@ -153,6 +154,9 @@ fun AppNavigation(
                 )
             }
 
+            // Perfil propio: ahora también recibe los 4 callbacks compactados
+            // (visto/reseñas/watchlist + bloqueados) que reusan las mismas rutas
+            // del perfil ajeno con el userId del usuario actual.
             composable(route = Screen.Profile.route) {
                 ProfileScreen(
                     onBack = { navController.popBackStack() },
@@ -171,7 +175,19 @@ fun AppNavigation(
                     onNavigateToEditProfile = { navController.navigate(Screen.EditProfile.route) },
                     onMovieClick = { id -> navController.navigate(Screen.MovieDetail.createRoute(id)) },
                     onTvShowClick = { id -> navController.navigate(Screen.TvShowDetail.createRoute(id)) },
-                    onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) }
+                    onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) },
+                    onNavigateToWatched = { id ->
+                        navController.navigate(Screen.UserWatched.createRoute(id))
+                    },
+                    onNavigateToReviews = { id ->
+                        navController.navigate(Screen.UserReviews.createRoute(id))
+                    },
+                    onNavigateToWatchlist = { id ->
+                        navController.navigate(Screen.UserWatchlist.createRoute(id))
+                    },
+                    onNavigateToBlockedUsers = {
+                        navController.navigate(Screen.BlockedUsers.route)
+                    }
                 )
             }
 
@@ -179,6 +195,18 @@ fun AppNavigation(
                 EditProfileScreen(
                     onBack = { navController.popBackStack() },
                     onSaved = { navController.popBackStack() }
+                )
+            }
+
+            // Pantalla "Usuarios bloqueados": accesible solo desde el perfil propio.
+            // Tap en una fila lleva al perfil del usuario (que mostrará la tarjeta
+            // "Has bloqueado a este usuario" + botón desbloquear).
+            composable(route = Screen.BlockedUsers.route) {
+                BlockedUsersScreen(
+                    onBack = { navController.popBackStack() },
+                    onUserClick = { id ->
+                        navController.navigate(Screen.UserProfile.createRoute(id))
+                    }
                 )
             }
 

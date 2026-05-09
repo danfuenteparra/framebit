@@ -60,6 +60,13 @@ class SocialRepository @Inject constructor(
     suspend fun getBlockRelation(currentUserId: String, otherUserId: String): BlockRelation =
         firestore.getBlockRelation(currentUserId, otherUserId)
 
+    /**
+     * Lista de usuarios bloqueados por [userId] con datos completos (PublicUser).
+     * Solo se usa en la pantalla "Usuarios bloqueados" del perfil propio.
+     */
+    suspend fun getBlockedUsers(userId: String): List<PublicUser> =
+        firestore.getBlockedUsers(userId)
+
     // =================== FRIENDS ACTIVITY ===================
     // Vistos por amigos = lo que han reseñado.
     // getFollowingIds ya filtra a los bloqueados, por lo que estas

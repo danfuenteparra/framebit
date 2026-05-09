@@ -13,6 +13,9 @@ sealed class Screen(val route: String) {
     object EditProfile : Screen("edit_profile")
     object AddReview : Screen("add_review")
 
+    /** Pantalla "Usuarios bloqueados" (privada del usuario actual). */
+    object BlockedUsers : Screen("blocked_users")
+
     object Search : Screen("search/{mediaType}") {
         fun createRoute(mediaType: String) = "search/$mediaType"
     }
