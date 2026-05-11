@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.moviebox"
+    namespace = "com.example.framebit"
     compileSdk = 34
 
     defaultConfig {

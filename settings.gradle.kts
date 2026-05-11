@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "moviebox"
+rootProject.name = "framebit"
 include(":app")
