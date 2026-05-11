@@ -180,4 +180,7 @@ class SocialRepository @Inject constructor(
 
     suspend fun getReviewsByUser(userId: String): List<FriendReview> =
         firestore.getReviewsByUser(userId)
+
+    suspend fun existsUserWithEmail(email: String): Boolean =
+        firestore.existsUserWithEmail(email)
 }

@@ -953,4 +953,21 @@ class FirestoreService @Inject constructor(
         val mutualIds = followerIds.filter { it in followingIds && it !in hidden }
         return if (mutualIds.isEmpty()) emptyList() else fetchUsersByIds(mutualIds)
     }
+
+    /**
+     * Comprueba si ya existe algún usuario registrado con ese email
+     * (cualquier método de auth). Se usa para impedir registros duplicados
+     * cuando el mismo email ya entró por Auth0.
+     */
+    suspend fun existsUserWithEmail(email: String): Boolean {
+        if (email.isBlank()) return false
+        return try {
+            firestore.collection("users")
+                .whereEqualTo("email", email.trim().lowercase())
+                .limit(1)
+                .get().await()
+                .documents
+                .isNotEmpty()
+        } catch (_: Exception) { false }
+    }
 }

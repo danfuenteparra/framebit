@@ -15,7 +15,6 @@ import com.example.framebit.data.repository.MessagingRepository
 import com.example.framebit.data.repository.MovieRepository
 import com.example.framebit.data.repository.SocialRepository
 import com.example.framebit.data.repository.TvShowRepository
-import com.auth0.android.result.UserProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +36,16 @@ data class ProfileCounts(
     val totalReviews: Int get() = reviewMovies + reviewTv + reviewGames
     val totalWatchlist: Int get() = watchlistMovies + watchlistTv + watchlistGames
 }
+
+/**
+ * Datos básicos del usuario actual para la cabecera. Independiente de cómo entró
+ * (Auth0 o Firebase email/password).
+ */
+data class ProfileBasic(
+    val name: String,
+    val email: String,
+    val pictureUrl: String?
+)
 
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
@@ -73,10 +82,6 @@ class ProfileViewModel @Inject constructor(
     private val _followingCount = MutableStateFlow(0)
     val followingCount: StateFlow<Int> = _followingCount
 
-    /**
-     * Total de mensajes no leídos. Se rellena cuando el perfil obtiene el userId.
-     * Mientras tanto, vale 0.
-     */
     private val _unreadMessagesCount = MutableStateFlow(0)
     val unreadMessagesCount: StateFlow<Int> = _unreadMessagesCount
 
@@ -95,19 +100,49 @@ class ProfileViewModel @Inject constructor(
         loadUserProfile()
     }
 
+    /**
+     * Carga el perfil sea cual sea el método de login.
+     *  - Email/Password: usa el cache de AuthManager directamente.
+     *  - Auth0: como antes, pide perfil con el accessToken.
+     */
     private fun loadUserProfile() {
         viewModelScope.launch {
             try {
-                val accessToken = authManager.getAccessToken()
-                if (accessToken != null) {
-                    val profile = authManager.getUserProfile(accessToken)
-                    currentUserId = profile.getId() ?: ""
-                    _uiState.value = ProfileUiState.Success(profile)
+                if (authManager.isEmailSession()) {
+                    val userId = authManager.getCachedUserId().orEmpty()
+                    if (userId.isBlank()) {
+                        _uiState.value = ProfileUiState.Error("No hay sesión activa")
+                        return@launch
+                    }
+                    currentUserId = userId
+                    _uiState.value = ProfileUiState.Success(
+                        ProfileBasic(
+                            name = authManager.getCachedName().orEmpty().ifBlank { "Usuario" },
+                            email = authManager.getCachedEmail().orEmpty(),
+                            pictureUrl = authManager.getCachedPictureUrl()
+                        )
+                    )
                     loadTopItems()
                     observeUnread()
                     refreshAll()
                 } else {
-                    _uiState.value = ProfileUiState.Error("No hay sesión activa")
+                    val accessToken = authManager.getAccessToken()
+                    if (accessToken != null) {
+                        val profile = authManager.getUserProfile(accessToken)
+                        currentUserId = profile.getId() ?: ""
+                        _uiState.value = ProfileUiState.Success(
+                            ProfileBasic(
+                                name = profile.name ?: profile.nickname ?: "Usuario",
+                                email = profile.email.orEmpty(),
+                                pictureUrl = profile.pictureURL
+                            )
+                        )
+                        loadTopItems()
+                        observeUnread()
+                        refreshAll()
+                    } else {
+                        _uiState.value = ProfileUiState.Error("No hay sesión activa")
+                    }
                 }
             } catch (e: Exception) {
                 _uiState.value = ProfileUiState.Error(e.message ?: "Error desconocido")
@@ -115,7 +150,6 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    /** Observa los no leídos totales en tiempo real (snapshot listener). */
     private fun observeUnread() {
         if (currentUserId.isBlank()) return
         viewModelScope.launch {
@@ -167,7 +201,6 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun refreshSocialCounts() = refreshAll()
-
     fun getCurrentUserId(): String = currentUserId
 
     private fun loadTopItems() {
@@ -271,7 +304,7 @@ class ProfileViewModel @Inject constructor(
 sealed class ProfileUiState {
     object Loading : ProfileUiState()
     object LoggedOut : ProfileUiState()
-    data class Success(val userProfile: UserProfile) : ProfileUiState()
+    data class Success(val basic: ProfileBasic) : ProfileUiState()
     data class Error(val message: String) : ProfileUiState()
 }
 

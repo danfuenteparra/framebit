@@ -175,11 +175,9 @@ fun ProfileScreen(
                     Text((uiState as ProfileUiState.Error).message, color = MovieBoxOnBackground)
                 }
                 is ProfileUiState.Success -> {
-                    val authProfile = (uiState as ProfileUiState.Success).userProfile
-
-                    // Preferimos foto/nombre del PublicUser (foto custom) y caemos a Auth0
-                    val displayName = publicUser?.name?.takeIf { it.isNotBlank() } ?: authProfile.name ?: "Usuario"
-                    val displayPicture = publicUser?.pictureUrl ?: authProfile.pictureURL
+                    val basic = (uiState as ProfileUiState.Success).basic
+                    val displayName = publicUser?.name?.takeIf { it.isNotBlank() } ?: basic.name
+                    val displayPicture = publicUser?.pictureUrl ?: basic.pictureUrl
                     val bio = publicUser?.bio.orEmpty()
                     val links = publicUser?.links.orEmpty()
 
