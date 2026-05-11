@@ -28,11 +28,11 @@ class EditProfileViewModel @Inject constructor(
     private val _links = MutableStateFlow<List<String>>(emptyList())
     val links: StateFlow<List<String>> = _links
 
-    /** URL pública actual de la foto (si ya hay una guardada en Firestore). */
-    private val _pictureUrl = MutableStateFlow<String?>(null)
-    val pictureUrl: StateFlow<String?> = _pictureUrl
+    /** URL pública actual de la foto (guardada en Firestore). */
+    private val _pictureUrl = MutableStateFlow("")
+    val pictureUrl: StateFlow<String> = _pictureUrl
 
-    /** Uri local seleccionado de galería pendiente de subir. */
+    /** Uri local pendiente de subir a Storage. */
     private val _pendingPictureUri = MutableStateFlow<Uri?>(null)
     val pendingPictureUri: StateFlow<Uri?> = _pendingPictureUri
 
@@ -61,9 +61,9 @@ class EditProfileViewModel @Inject constructor(
                     if (u != null) {
                         _bio.value = u.bio
                         _links.value = u.links
-                        _pictureUrl.value = u.pictureUrl
+                        _pictureUrl.value = u.pictureUrl.orEmpty()
                     } else {
-                        _pictureUrl.value = authManager.getCachedPictureUrl()
+                        _pictureUrl.value = authManager.getCachedPictureUrl().orEmpty()
                     }
                 }
             } catch (e: Exception) {
@@ -75,8 +75,22 @@ class EditProfileViewModel @Inject constructor(
     }
 
     fun updateBio(value: String) {
-        // Tope sano de 280 caracteres
         _bio.value = if (value.length > 280) value.take(280) else value
+    }
+
+    fun updatePictureUrl(value: String) {
+        _pictureUrl.value = value
+        // Si escribe URL, descarta cualquier upload pendiente
+        if (value.isNotBlank()) _pendingPictureUri.value = null
+    }
+
+    fun clearPicture() {
+        _pictureUrl.value = ""
+        _pendingPictureUri.value = null
+    }
+
+    fun pickPicture(uri: Uri?) {
+        _pendingPictureUri.value = uri
     }
 
     fun updateLink(index: Int, value: String) {
@@ -100,10 +114,6 @@ class EditProfileViewModel @Inject constructor(
         }
     }
 
-    fun pickPicture(uri: Uri?) {
-        _pendingPictureUri.value = uri
-    }
-
     fun save() {
         viewModelScope.launch {
             _saving.value = true
@@ -116,28 +126,37 @@ class EditProfileViewModel @Inject constructor(
                 }
                 socialRepository.ensureSignedIn()
 
-                // Subir foto si hay una pendiente
-                var newPictureUrl: String? = null
+                // Decidir la URL final:
+                //  1) Si hay un Uri pendiente, subir a Storage.
+                //  2) Si no, usar la URL del campo de texto (normalizada).
                 val pending = _pendingPictureUri.value
-                if (pending != null) {
-                    newPictureUrl = uploadProfilePicture(userId, pending)
+                val finalPicture: String = if (pending != null) {
+                    try {
+                        uploadProfilePicture(userId, pending)
+                    } catch (e: Exception) {
+                        _error.value = "No se pudo subir la foto. Activa Firebase Storage o pega una URL."
+                        return@launch
+                    }
+                } else {
+                    val raw = _pictureUrl.value.trim()
+                    when {
+                        raw.isBlank() -> ""
+                        !raw.startsWith("http") -> "https://$raw"
+                        else -> raw
+                    }
                 }
 
-                val cleanLinks = _links.value
-                    .map { it.trim() }
-                    .filter { it.isNotBlank() }
+                val cleanLinks = _links.value.map { it.trim() }.filter { it.isNotBlank() }
 
                 socialRepository.updateUserProfile(
                     userId = userId,
                     bio = _bio.value.trim(),
                     links = cleanLinks,
-                    pictureUrl = newPictureUrl
+                    pictureUrl = finalPicture
                 )
 
-                if (newPictureUrl != null) {
-                    _pictureUrl.value = newPictureUrl
-                    _pendingPictureUri.value = null
-                }
+                _pictureUrl.value = finalPicture
+                _pendingPictureUri.value = null
                 _links.value = cleanLinks
                 _saved.value = true
             } catch (e: Exception) {
@@ -149,16 +168,13 @@ class EditProfileViewModel @Inject constructor(
     }
 
     private suspend fun uploadProfilePicture(userId: String, uri: Uri): String {
-        // Asegura que hay sesión Firebase (anónima vale)
         if (firebaseAuth.currentUser == null) {
             firebaseAuth.signInAnonymously().await()
         }
-        // Sanitizar el userId para la ruta (los "|" de Auth0 no son válidos en algunos backends)
         val safeId = userId.replace("|", "_")
         val ref = firebaseStorage.reference
             .child("profile_pictures")
             .child("$safeId.jpg")
-
         ref.putFile(uri).await()
         return ref.downloadUrl.await().toString()
     }

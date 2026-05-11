@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -24,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -70,16 +72,9 @@ fun EditProfileScreen(
                     }
                 },
                 actions = {
-                    TextButton(
-                        onClick = { viewModel.save() },
-                        enabled = !saving
-                    ) {
+                    TextButton(onClick = { viewModel.save() }, enabled = !saving) {
                         if (saving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = MovieBoxPrimary,
-                                strokeWidth = 2.dp
-                            )
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MovieBoxPrimary, strokeWidth = 2.dp)
                         } else {
                             Text("Guardar", color = MovieBoxPrimary, fontWeight = FontWeight.Bold)
                         }
@@ -91,10 +86,9 @@ fun EditProfileScreen(
         containerColor = MovieBoxBackground
     ) { innerPadding ->
         if (loading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
-                contentAlignment = Alignment.Center
-            ) { CircularProgressIndicator(color = MovieBoxPrimary) }
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = MovieBoxPrimary)
+            }
             return@Scaffold
         }
 
@@ -108,8 +102,9 @@ fun EditProfileScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
+            // Avatar grande con botón de galería superpuesto
             Box(modifier = Modifier.size(120.dp)) {
-                val displayModel: Any? = pendingUri ?: pictureUrl
+                val displayModel: Any? = pendingUri ?: pictureUrl.takeIf { it.isNotBlank() }
                 if (displayModel != null) {
                     AsyncImage(
                         model = displayModel,
@@ -136,12 +131,7 @@ fun EditProfileScreen(
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            Icons.Default.Person,
-                            contentDescription = null,
-                            tint = MovieBoxOnBackground,
-                            modifier = Modifier.size(80.dp)
-                        )
+                        Icon(Icons.Default.Person, contentDescription = null, tint = MovieBoxOnBackground, modifier = Modifier.size(80.dp))
                     }
                 }
                 FloatingActionButton(
@@ -150,21 +140,50 @@ fun EditProfileScreen(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
                     },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(36.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd).size(36.dp),
                     containerColor = MovieBoxPrimary
                 ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = "Cambiar foto", tint = MovieBoxBackground)
+                    Icon(Icons.Default.CameraAlt, contentDescription = "Subir desde galería", tint = MovieBoxBackground)
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Toca la foto para cambiarla",
-                fontSize = 12.sp,
-                color = MovieBoxOnBackground.copy(alpha = 0.6f)
+                "Toca la foto para subir desde galería (requiere Firebase Storage)",
+                fontSize = 11.sp,
+                color = MovieBoxOnBackground.copy(alpha = 0.6f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Campo URL como alternativa
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text("O pega una URL de imagen", color = MovieBoxOnBackground, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = pictureUrl,
+                        onValueChange = { viewModel.updatePictureUrl(it) },
+                        placeholder = { Text("https://...", color = MovieBoxOnBackground.copy(alpha = 0.4f)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MovieBoxOnBackground,
+                            unfocusedTextColor = MovieBoxOnBackground,
+                            focusedBorderColor = MovieBoxPrimary,
+                            unfocusedBorderColor = MovieBoxSurface
+                        )
+                    )
+                    if (pictureUrl.isNotBlank() || pendingUri != null) {
+                        IconButton(onClick = { viewModel.clearPicture() }) {
+                            Icon(Icons.Default.Close, contentDescription = "Quitar", tint = MovieBoxOnBackground.copy(alpha = 0.7f))
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -185,11 +204,7 @@ fun EditProfileScreen(
                         unfocusedBorderColor = MovieBoxSurface
                     ),
                     supportingText = {
-                        Text(
-                            "${bio.length}/280",
-                            color = MovieBoxOnBackground.copy(alpha = 0.5f),
-                            fontSize = 11.sp
-                        )
+                        Text("${bio.length}/280", color = MovieBoxOnBackground.copy(alpha = 0.5f), fontSize = 11.sp)
                     }
                 )
             }
@@ -203,10 +218,7 @@ fun EditProfileScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text("Enlaces", color = MovieBoxOnBackground, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                TextButton(
-                    onClick = { viewModel.addLink() },
-                    enabled = links.size < 5
-                ) {
+                TextButton(onClick = { viewModel.addLink() }, enabled = links.size < 5) {
                     Icon(Icons.Default.Add, contentDescription = null, tint = MovieBoxPrimary, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Añadir", color = MovieBoxPrimary, fontSize = 13.sp)
@@ -251,19 +263,13 @@ fun EditProfileScreen(
                 )
             }
 
-            // Mostrar error
             error?.let { msg ->
                 Spacer(modifier = Modifier.height(16.dp))
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        msg,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(12.dp),
-                        fontSize = 13.sp
-                    )
+                    Text(msg, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(12.dp), fontSize = 13.sp)
                 }
                 LaunchedEffect(msg) {
                     kotlinx.coroutines.delay(3000)
