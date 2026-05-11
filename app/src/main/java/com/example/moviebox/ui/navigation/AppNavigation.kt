@@ -40,6 +40,9 @@ import com.example.moviebox.ui.screens.tvshowdetail.TvShowDetailScreen
 import com.example.moviebox.ui.screens.tvshows.TvShowsScreen
 import com.example.moviebox.ui.screens.userlist.UserListScreen
 import com.example.moviebox.ui.screens.userprofile.UserProfileScreen
+import com.example.moviebox.ui.screens.inbox.InboxScreen
+import com.example.moviebox.ui.screens.newchat.NewChatScreen
+import com.example.moviebox.ui.screens.chat.ChatScreen
 
 import com.example.moviebox.ui.screens.userprofile.sections.UserWatchedScreen
 import com.example.moviebox.ui.screens.userprofile.sections.UserReviewsScreen
@@ -49,6 +52,7 @@ import com.example.moviebox.ui.screens.userprofile.sections.buildReviewId
 import com.example.moviebox.ui.screens.usersearch.UserSearchScreen
 import com.example.moviebox.ui.screens.watchlist.WatchlistScreen
 import com.example.moviebox.ui.screens.reviewdetail.ReviewDetailScreen
+
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
@@ -387,6 +391,43 @@ fun AppNavigation(
                     onNavigateToUser = { userId ->
                         navController.navigate(Screen.UserProfile.createRoute(userId))
                     }
+                )
+            }
+
+            composable(route = Screen.Inbox.route) {
+                InboxScreen(
+                    onBack = { navController.popBackStack() },
+                    onChatClick = { chatId, otherUserId ->
+                        navController.navigate(Screen.Chat.createRoute(chatId, otherUserId))
+                    },
+                    onNewChat = { navController.navigate(Screen.NewChat.route) }
+                )
+            }
+
+            composable(route = Screen.NewChat.route) {
+                NewChatScreen(
+                    onBack = { navController.popBackStack() },
+                    onChatStarted = { chatId, otherUserId ->
+                        navController.popBackStack()
+                        navController.navigate(Screen.Chat.createRoute(chatId, otherUserId))
+                    }
+                )
+            }
+
+            composable(
+                route = Screen.Chat.route,
+                arguments = listOf(
+                    navArgument("chatId") { type = NavType.StringType },
+                    navArgument("otherUserId") { type = NavType.StringType }
+                )
+            ) {
+                ChatScreen(
+                    onBack = { navController.popBackStack() },
+                    onMovieClick = { id -> navController.navigate(Screen.MovieDetail.createRoute(id)) },
+                    onTvShowClick = { id -> navController.navigate(Screen.TvShowDetail.createRoute(id)) },
+                    onGameClick = { id -> navController.navigate(Screen.GameDetail.createRoute(id)) },
+                    onReviewClick = { reviewId -> navController.navigate(Screen.ReviewDetail.createRoute(reviewId)) },
+                    onUserProfileClick = { userId -> navController.navigate(Screen.UserProfile.createRoute(userId)) }
                 )
             }
         }
