@@ -13,9 +13,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * Item de Top 3 para mostrar (mediaType, posición, mediaId, título, póster).
- */
 data class TopItemDisplay(
     val mediaType: String,
     val position: Int,
@@ -24,14 +21,6 @@ data class TopItemDisplay(
     val posterPath: String?
 )
 
-/**
- * Contadores agregados del perfil que se muestran en los 3 botones grandes
- * (Visto/Jugado, Reseñas, Watchlist) y, desglosados por mediaType, en cada
- * una de las pantallas hijas (UserWatchedScreen, etc.).
- *
- * Calculados en el VM a partir de la library y las reseñas del usuario,
- * con una sola lectura por colección.
- */
 data class ProfileCounts(
     val watchedMovies: Int = 0,
     val watchedTv: Int = 0,
@@ -57,8 +46,6 @@ class UserProfileViewModel @Inject constructor(
 
     val targetUserId: String = savedStateHandle["userId"] ?: ""
 
-    // ----- Estado del perfil -----
-
     private val _user = MutableStateFlow<PublicUser?>(null)
     val user: StateFlow<PublicUser?> = _user
 
@@ -74,21 +61,13 @@ class UserProfileViewModel @Inject constructor(
     private val _topGames = MutableStateFlow<List<TopItemDisplay?>>(listOf(null, null, null))
     val topGames: StateFlow<List<TopItemDisplay?>> = _topGames
 
-    /**
-     * Contadores agregados de Visto/Reseñas/Watchlist (totales y por mediaType).
-     * Sustituye a las listas _watchedMovies/TvShows/Games del diseño anterior:
-     * ya no se cargan listas completas en el perfil — eso lo hacen las
-     * pantallas hijas cuando el usuario pulsa cada bloque.
-     */
     private val _counts = MutableStateFlow(ProfileCounts())
     val counts: StateFlow<ProfileCounts> = _counts
 
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading
 
-    // ----- Estado de bloqueo -----
-
-    private val _blockRelation = MutableStateFlow<BlockRelation>(BlockRelation.NotBlocked)
+    private val _blockRelation = MutableStateFlow(BlockRelation.NotBlocked)
     val blockRelation: StateFlow<BlockRelation> = _blockRelation
 
     val isOwnProfile: Boolean
@@ -98,12 +77,6 @@ class UserProfileViewModel @Inject constructor(
         load()
     }
 
-    /**
-     * Carga inicial del perfil.
-     * Primero comprueba la relación de bloqueo: si hay bloqueo activo en cualquier
-     * dirección, NO carga top items, library ni estado de follow para evitar
-     * mostrar nada del otro usuario.
-     */
     private fun load() {
         if (targetUserId.isBlank()) {
             _loading.value = false
@@ -114,22 +87,18 @@ class UserProfileViewModel @Inject constructor(
             try {
                 socialRepository.ensureSignedIn()
 
-                // Datos básicos del usuario (nombre, foto, contadores)
                 _user.value = socialRepository.getUser(targetUserId)
 
                 val myId = authManager.getCachedUserId()
 
-                // Relación de bloqueo (solo aplica si miramos un perfil ajeno)
                 if (myId != null && myId != targetUserId) {
                     _blockRelation.value = socialRepository.getBlockRelation(myId, targetUserId)
                 }
 
-                // Si hay bloqueo activo, no cargamos nada más del otro usuario
-                if (_blockRelation.value !is BlockRelation.NotBlocked) {
+                if (_blockRelation.value != BlockRelation.NotBlocked) {
                     return@launch
                 }
 
-                // Estado de follow (solo si no es nuestro perfil y no hay bloqueo)
                 if (myId != null && myId != targetUserId) {
                     _isFollowing.value = socialRepository.isFollowing(myId, targetUserId)
                 }
@@ -177,10 +146,6 @@ class UserProfileViewModel @Inject constructor(
         _topGames.value = games
     }
 
-    /**
-     * Carga library + reseñas y calcula los 9 contadores (3 secciones x 3 mediaTypes).
-     * Las listas completas no se guardan: las pantallas hijas las cargarán bajo demanda.
-     */
     private suspend fun loadCounts() {
         val library = try {
             socialRepository.getLibrary(targetUserId)
@@ -209,14 +174,10 @@ class UserProfileViewModel @Inject constructor(
         )
     }
 
-    /**
-     * Alterna seguir / dejar de seguir. Si hay bloqueo activo, no hace nada
-     * (la UI ya oculta el botón en ese caso, pero defendemos la lógica igual).
-     */
     fun toggleFollow() {
         val myId = authManager.getCachedUserId() ?: return
         if (myId == targetUserId) return
-        if (_blockRelation.value !is BlockRelation.NotBlocked) return
+        if (_blockRelation.value != BlockRelation.NotBlocked) return
         viewModelScope.launch {
             try {
                 if (_isFollowing.value) {
@@ -236,12 +197,6 @@ class UserProfileViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Bloquea al usuario del perfil actual. Tras bloquear:
-     *  - El estado pasa a IBlockedThem.
-     *  - Se limpian counters y top items del UI.
-     *  - El isFollowing queda en false (se rompe el follow en el backend).
-     */
     fun blockUser() {
         val myId = authManager.getCachedUserId() ?: return
         if (myId == targetUserId) return
@@ -259,11 +214,6 @@ class UserProfileViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Desbloquea al usuario y recarga el perfil completo.
-     * No restaura los follows previos (es decisión consciente: si te bloqueé
-     * y te desbloqueo, vuelves a empezar de cero).
-     */
     fun unblockUser() {
         val myId = authManager.getCachedUserId() ?: return
         if (myId == targetUserId) return
@@ -272,7 +222,6 @@ class UserProfileViewModel @Inject constructor(
                 socialRepository.ensureSignedIn()
                 socialRepository.unblockUser(myId, targetUserId)
                 _blockRelation.value = BlockRelation.NotBlocked
-                // Recargamos todo para repoblar top items y counters
                 load()
             } catch (_: Exception) { }
         }

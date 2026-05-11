@@ -1,9 +1,12 @@
 package com.example.moviebox.data.remote.firebase
 
 import com.example.moviebox.data.remote.model.BlockRelation
+import com.example.moviebox.data.remote.model.ChatMessage
+import com.example.moviebox.data.remote.model.ChatThread
 import com.example.moviebox.data.remote.model.FriendActivity
 import com.example.moviebox.data.remote.model.FriendReview
 import com.example.moviebox.data.remote.model.LibraryEntry
+import com.example.moviebox.data.remote.model.MessageAttachment
 import com.example.moviebox.data.remote.model.PublicUser
 import com.example.moviebox.data.remote.model.ReviewComment
 import com.google.firebase.auth.FirebaseAuth
@@ -12,6 +15,9 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -221,16 +227,6 @@ class FirestoreService @Inject constructor(
     }
 
     // =================== BLOCKING ===================
-    //
-    // Modelo:
-    //   users/{userId}/blocks/{blockedUserId}  -> { blockedUserId, createdAt }
-    //
-    // Comprobar "A bloqueó a B" = un get directo (cheap, sin índice).
-    // Para listas grandes (search, followers, following) usamos:
-    //   - getBlockedByMeIds(me)   : leer subcolección "blocks" de mi propio doc.
-    //   - getUsersWhoBlockedMeIds(me) : collectionGroup query sobre "blocks".
-    //
-    // La segunda requiere un índice en collectionGroup="blocks", campo "blockedUserId".
 
     private fun blockRef(currentUserId: String, blockedUserId: String) =
         firestore.collection("users")
@@ -238,24 +234,12 @@ class FirestoreService @Inject constructor(
             .collection("blocks")
             .document(blockedUserId)
 
-    /**
-     * Bloquea a [targetUserId] desde [currentUserId].
-     *
-     * En la misma operación batch:
-     *  1) Crea el doc en users/{currentUserId}/blocks/{targetUserId}.
-     *  2) Rompe los follows en ambas direcciones (si existían).
-     *  3) Decrementa los contadores de followers/following correspondientes.
-     *
-     * No borra reviews, likes ni comentarios: simplemente quedan filtrados al leer.
-     * Así, al desbloquear, todo vuelve a aparecer sin pérdida.
-     */
     suspend fun blockUser(currentUserId: String, targetUserId: String) {
         if (currentUserId.isBlank() || targetUserId.isBlank()) return
         if (currentUserId == targetUserId) return
 
         val batch = firestore.batch()
 
-        // 1) Crear el doc de bloqueo
         batch.set(
             blockRef(currentUserId, targetUserId),
             mapOf(
@@ -264,7 +248,6 @@ class FirestoreService @Inject constructor(
             )
         )
 
-        // 2 + 3) Romper follows en ambas direcciones si existen
         val iFollowThem = firestore.collection("users")
             .document(currentUserId).collection("following").document(targetUserId)
         val iAmFollower = firestore.collection("users")
@@ -275,8 +258,6 @@ class FirestoreService @Inject constructor(
         val theyAreFollower = firestore.collection("users")
             .document(currentUserId).collection("followers").document(targetUserId)
 
-        // Comprobamos cada dirección antes de borrar para no decrementar contadores
-        // que no debían moverse.
         val iFollowThemExists = iFollowThem.get().await().exists()
         val theyFollowMeExists = theyFollowMe.get().await().exists()
 
@@ -308,13 +289,11 @@ class FirestoreService @Inject constructor(
         batch.commit().await()
     }
 
-    /** Desbloquea borrando el doc. Los follows previos NO se restauran. */
     suspend fun unblockUser(currentUserId: String, targetUserId: String) {
         if (currentUserId.isBlank() || targetUserId.isBlank()) return
         blockRef(currentUserId, targetUserId).delete().await()
     }
 
-    /** True si [currentUserId] tiene bloqueado a [otherUserId]. */
     suspend fun didIBlock(currentUserId: String, otherUserId: String): Boolean {
         if (currentUserId.isBlank() || otherUserId.isBlank()) return false
         return try {
@@ -322,7 +301,6 @@ class FirestoreService @Inject constructor(
         } catch (_: Exception) { false }
     }
 
-    /** True si [otherUserId] tiene bloqueado a [currentUserId]. */
     suspend fun didTheyBlockMe(currentUserId: String, otherUserId: String): Boolean {
         if (currentUserId.isBlank() || otherUserId.isBlank()) return false
         return try {
@@ -330,11 +308,6 @@ class FirestoreService @Inject constructor(
         } catch (_: Exception) { false }
     }
 
-    /**
-     * Devuelve la relación de bloqueo desde el punto de vista de [currentUserId].
-     * Si ambos se bloquearon mutuamente, devuelve IBlockedThem (ver doc de
-     * BlockRelation para la justificación).
-     */
     suspend fun getBlockRelation(currentUserId: String, otherUserId: String): BlockRelation {
         if (currentUserId.isBlank() || otherUserId.isBlank() || currentUserId == otherUserId) {
             return BlockRelation.NotBlocked
@@ -346,7 +319,6 @@ class FirestoreService @Inject constructor(
         return BlockRelation.NotBlocked
     }
 
-    /** IDs de usuarios bloqueados por [userId] (directo: una lectura de subcolección). */
     suspend fun getBlockedByMeIds(userId: String): Set<String> {
         if (userId.isBlank()) return emptySet()
         return try {
@@ -359,11 +331,6 @@ class FirestoreService @Inject constructor(
         } catch (_: Exception) { emptySet() }
     }
 
-    /**
-     * IDs de usuarios que han bloqueado a [userId].
-     * Usa collectionGroup query: requiere índice en collectionGroup "blocks"
-     * por campo "blockedUserId". Firestore te dará el enlace en el primer error.
-     */
     suspend fun getUsersWhoBlockedMeIds(userId: String): Set<String> {
         if (userId.isBlank()) return emptySet()
         return try {
@@ -371,18 +338,12 @@ class FirestoreService @Inject constructor(
                 .whereEqualTo("blockedUserId", userId)
                 .get().await()
                 .documents.mapNotNull { doc ->
-                    // El parent de cada doc es la subcolección "blocks";
-                    // su parent.parent es el doc del usuario que bloqueó.
                     doc.reference.parent.parent?.id
                 }
                 .toSet()
         } catch (_: Exception) { emptySet() }
     }
 
-    /**
-     * Conjunto unificado de IDs que deben quedar OCULTOS para [userId]
-     * en cualquier listado social: los que él bloqueó + los que le bloquearon.
-     */
     suspend fun getMutuallyHiddenIds(userId: String): Set<String> {
         if (userId.isBlank()) return emptySet()
         val blockedByMe = getBlockedByMeIds(userId)
@@ -390,14 +351,6 @@ class FirestoreService @Inject constructor(
         return blockedByMe + blockedMe
     }
 
-    /**
-     * Devuelve los datos completos (PublicUser) de los usuarios bloqueados por [userId].
-     * Combina:
-     *   1) IDs desde la subcolección users/{userId}/blocks
-     *   2) Lectura batched de los docs de users con whereIn (en lotes de 30).
-     *
-     * Solo se usa en la pantalla "Usuarios bloqueados" del perfil propio.
-     */
     suspend fun getBlockedUsers(userId: String): List<PublicUser> {
         if (userId.isBlank()) return emptyList()
         val ids = getBlockedByMeIds(userId).toList()
@@ -427,7 +380,6 @@ class FirestoreService @Inject constructor(
         isFavorite: Boolean
     ) {
         val ref = reviewRef(userId, mediaType, mediaId)
-        // Preservamos contadores existentes al actualizar
         val existing = ref.get().await()
         val likesCount = existing.getLong("likesCount") ?: 0L
         val commentsCount = existing.getLong("commentsCount") ?: 0L
@@ -452,7 +404,6 @@ class FirestoreService @Inject constructor(
             )
         ).await()
 
-        // Auto-marca como visto en la library al reseñar
         setLibraryStatus(
             userId = userId,
             mediaType = mediaType,
@@ -468,19 +419,12 @@ class FirestoreService @Inject constructor(
 
     suspend fun deleteReview(userId: String, mediaType: String, mediaId: Int) {
         reviewRef(userId, mediaType, mediaId).delete().await()
-        // Marcamos library.hasReview = false (sigue como visto)
         val libRef = libraryRef(userId, mediaType, mediaId)
         if (libRef.get().await().exists()) {
             libRef.update("hasReview", false).await()
         }
     }
 
-    /**
-     * Reseñas recientes de los usuarios seguidos para alimentar la sección
-     * "De tus amigos" en Home. NOTA: el filtrado de bloqueos ya ocurre en
-     * getFollowingIds (que es lo que el repository llama antes de pasar
-     * los IDs aquí), así que esta función no necesita filtrar de nuevo.
-     */
     suspend fun getFriendsReviewedItems(
         followingIds: List<String>,
         mediaType: String,
@@ -529,19 +473,6 @@ class FirestoreService @Inject constructor(
         return result.sortedByDescending { it.watchedAt }
     }
 
-    /**
-     * Devuelve TODAS las reseñas de un usuario concreto.
-     * Lectura directa de la subcolección users/{userId}/reviews — no es collectionGroup,
-     * así que no requiere índice especial.
-     *
-     * Se usa para:
-     *  - Calcular los counts en el perfil compactado.
-     *  - Construir las secciones de pelis/series/juegos en UserReviewsScreen.
-     *  - Saber qué items de "visto" tienen reseña asociada (para badge de nota).
-     *
-     * No filtra bloqueos: el caller decide. En la práctica solo se llama desde
-     * UserProfileViewModel cuando ya se ha comprobado que NO hay bloqueo activo.
-     */
     suspend fun getReviewsByUser(authorUserId: String): List<FriendReview> {
         if (authorUserId.isBlank()) return emptyList()
         return try {
@@ -554,8 +485,6 @@ class FirestoreService @Inject constructor(
             docs.documents.mapNotNull { d ->
                 val mediaType = d.getString("mediaType") ?: return@mapNotNull null
                 val mediaId = (d.getLong("mediaId") ?: return@mapNotNull null).toInt()
-                // No nos interesa likedByMe aquí (es una vista de perfil ajeno),
-                // así que pasamos false para evitar lecturas extra por cada review.
                 mapReviewDoc(d, authorUserId, mediaType, mediaId, likedByMe = false)
             }
         } catch (_: Exception) { emptyList() }
@@ -650,11 +579,6 @@ class FirestoreService @Inject constructor(
         ref.update("commentsCount", FieldValue.increment(-1)).await()
     }
 
-    /**
-     * Reseñas de TODOS los usuarios para un media, ordenadas por likes desc.
-     * Filtra reseñas de usuarios con bloqueo activo en cualquier dirección.
-     * Requiere índice (collectionGroup="reviews": mediaType, mediaId, likesCount, createdAt).
-     */
     suspend fun getAllReviewsForMedia(
         mediaType: String,
         mediaId: Int,
@@ -670,9 +594,6 @@ class FirestoreService @Inject constructor(
                 .limit(limit)
                 .get().await()
 
-            // Calculamos el set de bloqueados (yo a ellos + ellos a mí) una sola vez.
-            // Pedimos algo de margen porque después filtramos, así no nos quedamos
-            // cortos si la mayoría de top results son de bloqueados.
             val hidden = if (currentUserId.isBlank()) emptySet()
             else getMutuallyHiddenIds(currentUserId)
 
@@ -687,10 +608,6 @@ class FirestoreService @Inject constructor(
         } catch (e: Exception) { emptyList() }
     }
 
-    /**
-     * Reseñas SOLO de los amigos sobre un media, ordenadas por likes desc.
-     * Los IDs ya vienen filtrados por bloqueo desde getFollowingIds().
-     */
     suspend fun getFriendsReviewsForMedia(
         followingIds: List<String>,
         mediaType: String,
@@ -729,7 +646,6 @@ class FirestoreService @Inject constructor(
             likesCount = (d.getLong("likesCount") ?: 0L).toInt(),
             commentsCount = (d.getLong("commentsCount") ?: 0L).toInt(),
             likedByMe = likedByMe
-            // entryKind se queda con default REVIEW (los doc en /reviews son reseñas reales)
         )
     }
 
@@ -788,16 +704,11 @@ class FirestoreService @Inject constructor(
             .collection("library")
             .document("${mediaType}_$mediaId")
 
-    /**
-     * Crea/actualiza una entrada de library con el status indicado.
-     * Si ya tenía una entrada con status "watched", NO la rebaja a "watchlist".
-     * Solo actualiza los campos que se pasan; el resto se hace merge.
-     */
     suspend fun setLibraryStatus(
         userId: String,
         mediaType: String,
         mediaId: Int,
-        status: String,                 // "watched" | "watchlist"
+        status: String,
         isFavorite: Boolean? = null,
         title: String? = null,
         posterPath: String? = null,
@@ -807,7 +718,6 @@ class FirestoreService @Inject constructor(
         val ref = libraryRef(userId, mediaType, mediaId)
         val existing = ref.get().await()
 
-        // No rebajar de watched a watchlist
         val finalStatus = if (existing.getString("status") == "watched" && status == "watchlist")
             "watched" else status
 
@@ -826,7 +736,6 @@ class FirestoreService @Inject constructor(
         ref.set(data, SetOptions.merge()).await()
     }
 
-    /** Cambia solo el flag de favorito sin tocar status. Crea la entrada si no existía. */
     suspend fun setLibraryFavorite(
         userId: String,
         mediaType: String,
@@ -854,12 +763,10 @@ class FirestoreService @Inject constructor(
         ref.set(data, SetOptions.merge()).await()
     }
 
-    /** Borra la entrada de library completamente. */
     suspend fun removeLibraryEntry(userId: String, mediaType: String, mediaId: Int) {
         libraryRef(userId, mediaType, mediaId).delete().await()
     }
 
-    /** Devuelve la entrada de library (o null si no existe). */
     suspend fun getLibraryEntry(userId: String, mediaType: String, mediaId: Int): LibraryEntry? {
         return try {
             val snap = libraryRef(userId, mediaType, mediaId).get().await()
@@ -867,10 +774,6 @@ class FirestoreService @Inject constructor(
         } catch (_: Exception) { null }
     }
 
-    /**
-     * Devuelve TODAS las entradas de library de un usuario, ordenadas por updatedAt desc.
-     * Filtra en el cliente por status / mediaType / favorito.
-     */
     suspend fun getLibrary(userId: String): List<LibraryEntry> {
         return try {
             firestore.collection("users")
@@ -880,5 +783,174 @@ class FirestoreService @Inject constructor(
                 .get().await()
                 .toObjects(LibraryEntry::class.java)
         } catch (_: Exception) { emptyList() }
+    }
+
+    // =================== MENSAJERÍA ===================
+
+    private fun chatRef(chatId: String) =
+        firestore.collection("chats").document(chatId)
+
+    /**
+     * Crea (o devuelve, si ya existía) un hilo de chat entre dos usuarios.
+     * Llamar siempre antes de enviar el primer mensaje.
+     */
+    suspend fun ensureChatThread(
+        userIdA: String,
+        userIdB: String
+    ): String {
+        val chatId = ChatThread.composeChatId(userIdA, userIdB)
+        val ref = chatRef(chatId)
+        if (ref.get().await().exists()) return chatId
+
+        val userA = getUser(userIdA)
+        val userB = getUser(userIdB)
+        val participantInfo = mapOf(
+            userIdA to mapOf("name" to (userA?.name ?: ""), "picture" to userA?.pictureUrl),
+            userIdB to mapOf("name" to (userB?.name ?: ""), "picture" to userB?.pictureUrl)
+        )
+
+        ref.set(
+            mapOf(
+                "chatId" to chatId,
+                "participants" to listOf(userIdA, userIdB),
+                "participantInfo" to participantInfo,
+                "lastMessage" to "",
+                "lastMessageAt" to 0L,
+                "lastMessageSenderId" to "",
+                "lastMessageType" to "text",
+                "unreadCount" to mapOf(userIdA to 0L, userIdB to 0L)
+            )
+        ).await()
+        return chatId
+    }
+
+    /**
+     * Envía un mensaje. Transacción: inserta mensaje, actualiza lastMessage y
+     * incrementa unreadCount del receptor.
+     */
+    suspend fun sendMessage(
+        chatId: String,
+        senderId: String,
+        receiverId: String,
+        text: String,
+        type: String = "text",
+        attachment: MessageAttachment? = null
+    ) {
+        val ref = chatRef(chatId)
+        val msgRef = ref.collection("messages").document()
+        val now = System.currentTimeMillis()
+
+        val msgData = mutableMapOf<String, Any?>(
+            "messageId" to msgRef.id,
+            "senderId" to senderId,
+            "text" to text,
+            "type" to type,
+            "createdAt" to now
+        )
+        if (attachment != null) {
+            msgData["attachment"] = attachmentToMap(attachment)
+        }
+
+        val preview = when (type) {
+            "media" -> "📎 ${attachment?.title ?: "Contenido"}"
+            "review" -> "⭐ Reseña: ${attachment?.title ?: ""}"
+            else -> text
+        }
+
+        firestore.runTransaction { tx ->
+            tx.set(msgRef, msgData)
+            tx.update(ref, mapOf(
+                "lastMessage" to preview,
+                "lastMessageAt" to now,
+                "lastMessageSenderId" to senderId,
+                "lastMessageType" to type,
+                "unreadCount.$receiverId" to FieldValue.increment(1)
+            ))
+            null
+        }.await()
+    }
+
+    private fun attachmentToMap(a: MessageAttachment): Map<String, Any?> = mapOf(
+        "mediaType" to a.mediaType,
+        "mediaId" to a.mediaId,
+        "title" to a.title,
+        "posterPath" to a.posterPath,
+        "releaseYear" to a.releaseYear,
+        "reviewId" to a.reviewId,
+        "reviewRating" to a.reviewRating,
+        "reviewAuthorName" to a.reviewAuthorName,
+        "reviewAuthorPicture" to a.reviewAuthorPicture
+    )
+
+    /** Marca como leídos los mensajes del chat para el usuario (pone su unreadCount a 0). */
+    suspend fun markChatAsRead(chatId: String, userId: String) {
+        try {
+            chatRef(chatId).update("unreadCount.$userId", 0L).await()
+        } catch (_: Exception) { }
+    }
+
+    /** Hilos del usuario, ordenados por última actividad. Snapshot (tiempo real). */
+    fun observeChats(userId: String): Flow<List<ChatThread>> = callbackFlow {
+        val reg = firestore.collection("chats")
+            .whereArrayContains("participants", userId)
+            .orderBy("lastMessageAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snap, err ->
+                if (err != null || snap == null) {
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                trySend(snap.toObjects(ChatThread::class.java))
+            }
+        awaitClose { reg.remove() }
+    }
+
+    /** Mensajes de un chat en tiempo real, ordenados ASC. */
+    fun observeMessages(chatId: String): Flow<List<ChatMessage>> = callbackFlow {
+        val reg = chatRef(chatId).collection("messages")
+            .orderBy("createdAt", Query.Direction.ASCENDING)
+            .addSnapshotListener { snap, err ->
+                if (err != null || snap == null) {
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                trySend(snap.toObjects(ChatMessage::class.java))
+            }
+        awaitClose { reg.remove() }
+    }
+
+    /** Total de mensajes no leídos del usuario, sumando todos sus chats. Tiempo real. */
+    fun observeTotalUnread(userId: String): Flow<Int> = callbackFlow {
+        val reg = firestore.collection("chats")
+            .whereArrayContains("participants", userId)
+            .addSnapshotListener { snap, err ->
+                if (err != null || snap == null) {
+                    trySend(0)
+                    return@addSnapshotListener
+                }
+                val total = snap.documents.sumOf { d ->
+                    val map = d.get("unreadCount") as? Map<*, *>
+                    (map?.get(userId) as? Long ?: 0L).toInt()
+                }
+                trySend(total)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    /**
+     * Devuelve los userIds con los que el usuario tiene "mutual follow"
+     * (yo lo sigo Y él me sigue). Excluye bloqueados. Útil para la pantalla
+     * de "nuevo chat".
+     */
+    suspend fun getMutualFollows(userId: String): List<PublicUser> {
+        val followingIds = getFollowingIds(userId).toSet()
+        if (followingIds.isEmpty()) return emptyList()
+        val followerIds = try {
+            firestore.collection("users")
+                .document(userId).collection("followers")
+                .get().await().documents.map { it.id }
+        } catch (_: Exception) { emptyList() }
+        val hidden = getMutuallyHiddenIds(userId)
+        val mutualIds = followerIds.filter { it in followingIds && it !in hidden }
+        return if (mutualIds.isEmpty()) emptyList() else fetchUsersByIds(mutualIds)
     }
 }

@@ -46,21 +46,6 @@ import com.example.moviebox.ui.theme.MovieBoxSurface
 
 /**
  * Pantalla de perfil de OTRO usuario (cuando es propio se ve por ProfileScreen).
- *
- * Estructura compactada:
- *   - Cabecera (avatar, bio, links, follow)
- *   - Top 3 (películas / series / juegos)
- *   - 3 botones grandes con totales:
- *       Visto / Jugado · N   →  UserWatchedScreen
- *       Reseñas         · N   →  UserReviewsScreen
- *       Watchlist       · N   →  UserWatchlistScreen
- *
- * Las listas completas ya no se cargan aquí: cada pantalla hija las pide al entrar.
- *
- * Tres estados principales según BlockRelation:
- *  - NotBlocked   : todo el perfil visible.
- *  - IBlockedThem : header mínimo + tarjeta "has bloqueado" + botón desbloquear.
- *  - TheyBlockedMe: header mínimo + tarjeta "no puedes ver este perfil".
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,7 +71,6 @@ fun UserProfileScreen(
     val counts by viewModel.counts.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // Estado UI local: menú de tres puntos y diálogo de confirmación de bloqueo
     var showMenu by remember { mutableStateOf(false) }
     var showBlockConfirm by remember { mutableStateOf(false) }
 
@@ -108,9 +92,8 @@ fun UserProfileScreen(
                     }
                 },
                 actions = {
-                    // Menú de tres puntos: bloquear / desbloquear.
                     if (!viewModel.isOwnProfile && user != null
-                        && blockRelation !is BlockRelation.TheyBlockedMe) {
+                        && blockRelation != BlockRelation.TheyBlockedMe) {
                         Box {
                             IconButton(onClick = { showMenu = true }) {
                                 Icon(
@@ -193,7 +176,6 @@ fun UserProfileScreen(
             return@Scaffold
         }
 
-        // Branching principal según relación de bloqueo
         when (blockRelation) {
             BlockRelation.TheyBlockedMe -> {
                 BlockedHeaderOnly(
@@ -239,7 +221,6 @@ fun UserProfileScreen(
         }
     }
 
-    // Diálogo de confirmación al pulsar "Bloquear"
     if (showBlockConfirm) {
         AlertDialog(
             onDismissRequest = { showBlockConfirm = false },
@@ -271,10 +252,6 @@ fun UserProfileScreen(
     }
 }
 
-/**
- * Cabecera mínima (avatar, nombre) + tarjeta con mensaje.
- * Se usa tanto cuando yo bloqueo (showUnblockButton=true) como cuando me bloquean.
- */
 @Composable
 private fun BlockedHeaderOnly(
     user: PublicUser,
@@ -313,7 +290,6 @@ private fun BlockedHeaderOnly(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Tarjeta con el mensaje
         Card(
             colors = CardDefaults.cardColors(containerColor = MovieBoxSurface),
             shape = RoundedCornerShape(12.dp),
@@ -351,9 +327,6 @@ private fun BlockedHeaderOnly(
     }
 }
 
-/**
- * Contenido completo del perfil cuando no hay bloqueo.
- */
 @Composable
 private fun FullProfileContent(
     user: PublicUser,
@@ -382,7 +355,6 @@ private fun FullProfileContent(
     ) {
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Avatar
         if (user.pictureUrl != null) {
             AsyncImage(
                 model = user.pictureUrl,
@@ -402,7 +374,6 @@ private fun FullProfileContent(
         Spacer(modifier = Modifier.height(8.dp))
         Text(user.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MovieBoxOnBackground)
 
-        // Bio
         if (user.bio.isNotBlank()) {
             Spacer(modifier = Modifier.height(6.dp))
             Text(
@@ -414,7 +385,6 @@ private fun FullProfileContent(
             )
         }
 
-        // Enlaces
         if (user.links.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
             Column(
@@ -448,7 +418,6 @@ private fun FullProfileContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Contadores de seguidores / siguiendo
         Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -474,7 +443,6 @@ private fun FullProfileContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Botón seguir/dejar de seguir (solo si no es propio perfil)
         if (!isOwnProfile) {
             Button(
                 onClick = onToggleFollow,
@@ -496,7 +464,6 @@ private fun FullProfileContent(
         HorizontalDivider(color = MovieBoxSurface, modifier = Modifier.padding(horizontal = 16.dp))
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Top 3
         Text(
             text = "Top 3 de " + user.name,
             fontSize = 20.sp,
@@ -518,7 +485,6 @@ private fun FullProfileContent(
         HorizontalDivider(color = MovieBoxSurface, modifier = Modifier.padding(horizontal = 16.dp))
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Bloque compactado: 3 botones grandes con totales
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -549,10 +515,6 @@ private fun FullProfileContent(
     }
 }
 
-/**
- * Tarjeta horizontal con icono, etiqueta, total y flecha. Se usa para los
- * 3 accesos a las pantallas hijas (Visto/Reseñas/Watchlist).
- */
 @Composable
 private fun SectionButton(
     icon: ImageVector,
@@ -603,9 +565,6 @@ private fun SectionButton(
     }
 }
 
-/**
- * Fila de Top 3 (3 huecos fijos, vacíos cuando el usuario no ha colocado nada).
- */
 @Composable
 private fun ClickableTopRow(
     label: String,

@@ -45,32 +45,19 @@ class SocialRepository @Inject constructor(
 
     // =================== BLOCKING ===================
 
-    /**
-     * Bloquea a otro usuario. Rompe los follows en ambas direcciones de forma atómica.
-     * No borra reviews ni likes existentes; al desbloquear todo vuelve a aparecer.
-     */
     suspend fun blockUser(currentUserId: String, targetUserId: String) =
         firestore.blockUser(currentUserId, targetUserId)
 
-    /** Desbloquea a un usuario. No restaura los follows previos. */
     suspend fun unblockUser(currentUserId: String, targetUserId: String) =
         firestore.unblockUser(currentUserId, targetUserId)
 
-    /** Devuelve la relación de bloqueo (Not / IBlockedThem / TheyBlockedMe). */
     suspend fun getBlockRelation(currentUserId: String, otherUserId: String): BlockRelation =
         firestore.getBlockRelation(currentUserId, otherUserId)
 
-    /**
-     * Lista de usuarios bloqueados por [userId] con datos completos (PublicUser).
-     * Solo se usa en la pantalla "Usuarios bloqueados" del perfil propio.
-     */
     suspend fun getBlockedUsers(userId: String): List<PublicUser> =
         firestore.getBlockedUsers(userId)
 
     // =================== FRIENDS ACTIVITY ===================
-    // Vistos por amigos = lo que han reseñado.
-    // getFollowingIds ya filtra a los bloqueados, por lo que estas
-    // listas no incluyen actividad de usuarios con bloqueo activo.
 
     suspend fun getFriendsMovies(userId: String): List<FriendActivity> {
         val ids = firestore.getFollowingIds(userId)
@@ -109,7 +96,6 @@ class SocialRepository @Inject constructor(
     suspend fun deleteReviewRemote(userId: String, mediaType: String, mediaId: Int) =
         firestore.deleteReview(userId, mediaType, mediaId)
 
-    // Likes / comentarios sobre una reseña
     suspend fun getReviewById(authorUserId: String, mediaType: String, mediaId: Int, currentUserId: String) =
         firestore.getReviewById(authorUserId, mediaType, mediaId, currentUserId)
 
@@ -129,7 +115,6 @@ class SocialRepository @Inject constructor(
     suspend fun deleteComment(authorUserId: String, mediaType: String, mediaId: Int, commentId: String) =
         firestore.deleteComment(authorUserId, mediaType, mediaId, commentId)
 
-    // Listas de reseñas para un media (ya filtran bloqueos en el FirestoreService)
     suspend fun getAllReviewsForMedia(mediaType: String, mediaId: Int, currentUserId: String): List<FriendReview> =
         firestore.getAllReviewsForMedia(mediaType, mediaId, currentUserId)
 
@@ -193,10 +178,6 @@ class SocialRepository @Inject constructor(
     suspend fun getLibrary(userId: String): List<LibraryEntry> =
         firestore.getLibrary(userId)
 
-    /**
-     * Devuelve todas las reseñas del usuario [userId], ordenadas por createdAt desc.
-     * Delegado directo a FirestoreService.getReviewsByUser.
-     */
     suspend fun getReviewsByUser(userId: String): List<FriendReview> =
         firestore.getReviewsByUser(userId)
 }
