@@ -11,20 +11,19 @@ import com.example.moviebox.data.remote.dto.MovieDto
 import com.example.moviebox.data.remote.dto.TvShowDto
 import com.example.moviebox.data.remote.model.PublicUser
 import com.example.moviebox.data.repository.GameRepository
+import com.example.moviebox.data.repository.MessagingRepository
 import com.example.moviebox.data.repository.MovieRepository
 import com.example.moviebox.data.repository.SocialRepository
 import com.example.moviebox.data.repository.TvShowRepository
 import com.auth0.android.result.UserProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * Contadores agregados del perfil propio. Mismo shape que en UserProfileViewModel
- * para que la UI pueda usar el mismo SectionButton.
- */
 data class ProfileCounts(
     val watchedMovies: Int = 0,
     val watchedTv: Int = 0,
@@ -48,7 +47,8 @@ class ProfileViewModel @Inject constructor(
     private val movieRepository: MovieRepository,
     private val tvShowRepository: TvShowRepository,
     private val gameRepository: GameRepository,
-    private val socialRepository: SocialRepository
+    private val socialRepository: SocialRepository,
+    private val messagingRepository: MessagingRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
@@ -63,27 +63,25 @@ class ProfileViewModel @Inject constructor(
     private val _topGames = MutableStateFlow<List<TopItemEntity?>>(listOf(null, null, null))
     val topGames: StateFlow<List<TopItemEntity?>> = _topGames
 
-    // Datos sociales del usuario actual (bio, links, contadores, foto custom)
     private val _publicUser = MutableStateFlow<PublicUser?>(null)
     val publicUser: StateFlow<PublicUser?> = _publicUser
 
-    /**
-     * Contadores agregados (totales y por mediaType) para el bloque compactado.
-     * Sustituye a las antiguas listas _watchedMovies/TvShows/Games del UI:
-     * las listas completas se cargan ahora en las pantallas hijas
-     * (UserWatchedScreen / UserReviewsScreen / UserWatchlistScreen).
-     */
     private val _counts = MutableStateFlow(ProfileCounts())
     val counts: StateFlow<ProfileCounts> = _counts
 
-    // Contadores sociales (atajos cómodos para la UI)
     private val _followersCount = MutableStateFlow(0)
     val followersCount: StateFlow<Int> = _followersCount
 
     private val _followingCount = MutableStateFlow(0)
     val followingCount: StateFlow<Int> = _followingCount
 
-    // Búsqueda interna del Top 3
+    /**
+     * Total de mensajes no leídos. Se rellena cuando el perfil obtiene el userId.
+     * Mientras tanto, vale 0.
+     */
+    private val _unreadMessagesCount = MutableStateFlow(0)
+    val unreadMessagesCount: StateFlow<Int> = _unreadMessagesCount
+
     private val _searchResults = MutableStateFlow<SearchResults>(SearchResults.Empty)
     val searchResults: StateFlow<SearchResults> = _searchResults
 
@@ -108,6 +106,7 @@ class ProfileViewModel @Inject constructor(
                     currentUserId = profile.getId() ?: ""
                     _uiState.value = ProfileUiState.Success(profile)
                     loadTopItems()
+                    observeUnread()
                     refreshAll()
                 } else {
                     _uiState.value = ProfileUiState.Error("No hay sesión activa")
@@ -118,14 +117,22 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Refresca PublicUser (bio/links/foto/contadores), counts agregados,
-     * library y reviews. Se llama al ON_RESUME de la pantalla.
-     */
+    /** Observa los no leídos totales en tiempo real (snapshot listener). */
+    private fun observeUnread() {
+        if (currentUserId.isBlank()) return
+        viewModelScope.launch {
+            try {
+                messagingRepository.ensureSignedIn()
+                messagingRepository.observeTotalUnread(currentUserId).collect { count ->
+                    _unreadMessagesCount.value = count
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
     fun refreshAll() {
         if (currentUserId.isBlank()) return
         viewModelScope.launch {
-            // PublicUser y contadores sociales
             try {
                 val user = socialRepository.getUser(currentUserId)
                 if (user != null) {
@@ -135,7 +142,6 @@ class ProfileViewModel @Inject constructor(
                 }
             } catch (_: Exception) { }
 
-            // Library + reviews -> counts agregados
             try {
                 val library = socialRepository.getLibrary(currentUserId)
                 val reviews = try {
@@ -162,7 +168,6 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    /** Llamar al volver a la pantalla para refrescar contadores. */
     fun refreshSocialCounts() = refreshAll()
 
     fun getCurrentUserId(): String = currentUserId
@@ -233,7 +238,6 @@ class ProfileViewModel @Inject constructor(
                     posterPath = posterPath
                 )
             )
-            // Sincronizar a Firestore para que se vea en perfil público
             try {
                 socialRepository.syncTopItem(currentUserId, mediaType, position, mediaId, title, posterPath)
             } catch (_: Exception) { }

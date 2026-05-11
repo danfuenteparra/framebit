@@ -191,7 +191,8 @@ fun AppNavigation(
                     },
                     onNavigateToBlockedUsers = {
                         navController.navigate(Screen.BlockedUsers.route)
-                    }
+                    },
+                    onNavigateToInbox = { navController.navigate(Screen.Inbox.route) }
                 )
             }
 

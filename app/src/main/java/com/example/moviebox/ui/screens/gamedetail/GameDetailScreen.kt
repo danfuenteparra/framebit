@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -32,6 +33,8 @@ import coil.compose.AsyncImage
 import com.example.moviebox.data.remote.dto.ScreenshotDto
 import com.example.moviebox.ui.components.reviews.AddReviewDialog
 import com.example.moviebox.ui.components.reviews.ReviewsSection
+import com.example.moviebox.ui.screens.sharetochat.ShareTarget
+import com.example.moviebox.ui.screens.sharetochat.ShareToChatDialog
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
@@ -54,6 +57,7 @@ fun GameDetailScreen(
 
     val context = LocalContext.current
     var showReviewDialog by remember { mutableStateOf(false) }
+    var showShareDialog by remember { mutableStateOf(false) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -77,6 +81,9 @@ fun GameDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showShareDialog = true }) {
+                        Icon(Icons.Default.Send, contentDescription = "Enviar a un amigo", tint = MovieBoxPrimary)
+                    }
                     IconButton(onClick = { viewModel.toggleWatchlisted() }) {
                         Icon(
                             imageVector = if (isWatchlisted) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
@@ -257,6 +264,25 @@ fun GameDetailScreen(
                 showReviewDialog = false
             }
         )
+    }
+
+    if (showShareDialog) {
+        val game = (uiState as? GameDetailUiState.Success)?.game
+        if (game != null) {
+            ShareToChatDialog(
+                target = ShareTarget(
+                    mediaType = "game",
+                    mediaId = game.id,
+                    title = game.name,
+                    posterPath = game.backgroundImage,
+                    releaseYear = game.released?.take(4) ?: ""
+                ),
+                onDismiss = { showShareDialog = false },
+                onSent = { showShareDialog = false }
+            )
+        } else {
+            showShareDialog = false
+        }
     }
 }
 

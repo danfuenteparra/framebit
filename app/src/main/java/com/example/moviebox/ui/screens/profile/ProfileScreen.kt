@@ -45,12 +45,21 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Mail
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
 import com.example.moviebox.data.local.entity.TopItemEntity
 import com.example.moviebox.data.remote.api.TmdbApiService
 import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
 import com.example.moviebox.ui.theme.MovieBoxSurface
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +78,7 @@ fun ProfileScreen(
     onNavigateToWatchlist: (String) -> Unit,
     // Callback nuevo: abrir pantalla de usuarios bloqueados
     onNavigateToBlockedUsers: () -> Unit,
+    onNavigateToInbox: () -> Unit,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -79,6 +89,8 @@ fun ProfileScreen(
     val counts by viewModel.counts.collectAsStateWithLifecycle()
     val followersCount by viewModel.followersCount.collectAsStateWithLifecycle()
     val followingCount by viewModel.followingCount.collectAsStateWithLifecycle()
+    val unreadMessages by viewModel.unreadMessagesCount.collectAsStateWithLifecycle()
+
     val context = LocalContext.current
 
     // Refrescar al volver de EditProfile / Watchlist / etc.
@@ -111,6 +123,29 @@ fun ProfileScreen(
             TopAppBar(
                 title = { Text("Mi perfil", color = MovieBoxOnBackground, fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = onNavigateToInbox) {
+                        Box {
+                            Icon(Icons.Default.Mail, contentDescription = "Mensajes", tint = MovieBoxPrimary)
+                            if (unreadMessages > 0) {
+                                Surface(
+                                    color = Color.Red,
+                                    shape = CircleShape,
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .align(Alignment.TopEnd)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = if (unreadMessages > 9) "9+" else unreadMessages.toString(),
+                                            color = Color.White,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                     IconButton(onClick = onNavigateToUserSearch) {
                         Icon(Icons.Default.PersonSearch, contentDescription = "Buscar usuarios", tint = MovieBoxPrimary)
                     }

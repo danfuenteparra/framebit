@@ -20,6 +20,9 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Send
+import com.example.moviebox.ui.screens.sharetochat.ShareTarget
+import com.example.moviebox.ui.screens.sharetochat.ShareToChatDialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -33,6 +36,7 @@ import com.example.moviebox.ui.theme.MovieBoxBackground
 import com.example.moviebox.ui.theme.MovieBoxOnBackground
 import com.example.moviebox.ui.theme.MovieBoxPrimary
 import com.example.moviebox.ui.theme.MovieBoxSurface
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +57,8 @@ fun MovieDetailScreen(
 
     val context = LocalContext.current
     var showReviewDialog by remember { mutableStateOf(false) }
+    var showShareDialog by remember { mutableStateOf(false) }
+
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -76,6 +82,9 @@ fun MovieDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showShareDialog = true }) {
+                        Icon(Icons.Default.Send, contentDescription = "Enviar a un amigo", tint = MovieBoxPrimary)
+                    }
                     IconButton(onClick = { viewModel.toggleWatchlisted() }) {
                         Icon(
                             imageVector = if (isWatchlisted) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
@@ -222,5 +231,24 @@ fun MovieDetailScreen(
                 showReviewDialog = false
             }
         )
+    }
+
+    if (showShareDialog) {
+        val movie = (uiState as? MovieDetailUiState.Success)?.movie
+        if (movie != null) {
+            ShareToChatDialog(
+                target = ShareTarget(
+                    mediaType = "movie",
+                    mediaId = movie.id,
+                    title = movie.title,
+                    posterPath = movie.posterPath,
+                    releaseYear = movie.releaseDate.take(4)
+                ),
+                onDismiss = { showShareDialog = false },
+                onSent = { showShareDialog = false }
+            )
+        } else {
+            showShareDialog = false
+        }
     }
 }
