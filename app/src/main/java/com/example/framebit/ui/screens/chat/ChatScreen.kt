@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
@@ -53,6 +54,7 @@ fun ChatScreen(
     val otherUser by viewModel.otherUser.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var draft by rememberSaveable { mutableStateOf("") }
+    var showMediaDialog by remember { mutableStateOf(false) }
     val myId = viewModel.myUserId
 
     LaunchedEffect(messages.size) {
@@ -115,6 +117,16 @@ fun ChatScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Botón para adjuntar contenido
+                FilledIconButton(
+                    onClick = { showMediaDialog = true },
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MovieBoxSurface
+                    )
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Adjuntar contenido", tint = MovieBoxPrimary)
+                }
+
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },
@@ -162,6 +174,19 @@ fun ChatScreen(
                 )
             }
         }
+    }
+
+    if (showMediaDialog) {
+        ChatMediaSearchDialog(
+            viewModel = viewModel,
+            onDismiss = {
+                showMediaDialog = false
+                viewModel.clearSearch()
+            },
+            onSent = {
+                showMediaDialog = false
+            }
+        )
     }
 }
 
