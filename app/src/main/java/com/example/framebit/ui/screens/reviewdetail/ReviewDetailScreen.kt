@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,6 +31,8 @@ import coil.compose.AsyncImage
 import com.example.framebit.data.remote.api.TmdbApiService
 import com.example.framebit.data.remote.model.FriendReview
 import com.example.framebit.data.remote.model.ReviewComment
+import com.example.framebit.ui.screens.sharetochat.ShareTarget
+import com.example.framebit.ui.screens.sharetochat.ShareToChatDialog
 import com.example.framebit.ui.theme.MovieBoxBackground
 import com.example.framebit.ui.theme.MovieBoxOnBackground
 import com.example.framebit.ui.theme.MovieBoxPrimary
@@ -51,10 +54,8 @@ fun ReviewDetailScreen(
     val loading by viewModel.loading.collectAsStateWithLifecycle()
 
     var commentText by remember { mutableStateOf("") }
+    var showShareDialog by remember { mutableStateOf(false) }
 
-    // Si la reseña es minimal (no existe doc en Firestore, solo entrada de
-    // library), ocultamos la barra de comentarios y el botón de like:
-    // no hay doc al que asociar likes ni comentarios.
     val r = review
     val isMinimal = r?.isMinimal == true
 
@@ -63,8 +64,6 @@ fun ReviewDetailScreen(
             TopAppBar(
                 title = {
                     Text(
-                        // Cuando es minimal cambiamos el título para que el
-                        // usuario entienda que no es una "reseña" propiamente.
                         text = if (isMinimal) "Detalle" else "Reseña",
                         color = MovieBoxOnBackground,
                         fontWeight = FontWeight.Bold
@@ -75,11 +74,22 @@ fun ReviewDetailScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = MovieBoxOnBackground)
                     }
                 },
+                actions = {
+                    // Botón compartir solo en reseñas reales (no minimal)
+                    if (r != null && !isMinimal) {
+                        IconButton(onClick = { showShareDialog = true }) {
+                            Icon(
+                                Icons.Filled.Send,
+                                contentDescription = "Enviar a un amigo",
+                                tint = MovieBoxPrimary
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MovieBoxBackground)
             )
         },
         bottomBar = {
-            // Barra de comentar SOLO en reseñas reales con doc en Firestore.
             if (r != null && !isMinimal) {
                 CommentInputBar(
                     value = commentText,
@@ -112,7 +122,6 @@ fun ReviewDetailScreen(
                             onUserClick = { onNavigateToUser(r.userId) },
                             onLikeClick = { viewModel.toggleLike() }
                         )
-                        // Bloque de comentarios solo en modo no-minimal
                         if (!isMinimal) {
                             HorizontalDivider(color = MovieBoxSurface)
                             Text(
@@ -149,6 +158,25 @@ fun ReviewDetailScreen(
             }
         }
     }
+
+    // Diálogo de compartir reseña
+    if (showShareDialog && r != null && !isMinimal) {
+        ShareToChatDialog(
+            target = ShareTarget(
+                mediaType = r.mediaType,
+                mediaId = r.mediaId,
+                title = r.mediaTitle,
+                posterPath = r.mediaPosterPath,
+                releaseYear = r.releaseYear,
+                reviewId = r.reviewId,
+                reviewRating = r.rating,
+                reviewAuthorName = r.userName,
+                reviewAuthorPicture = r.userPicture
+            ),
+            onDismiss = { showShareDialog = false },
+            onSent = { showShareDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -164,7 +192,6 @@ private fun ReviewHeader(
     else TmdbApiService.getImageUrl(review.mediaPosterPath)
 
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        // Cabecera: portada + título + año + fecha
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             AsyncImage(
                 model = posterUrl,
@@ -208,7 +235,6 @@ private fun ReviewHeader(
 
         Spacer(Modifier.height(16.dp))
 
-        // Autor
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.clickable { onUserClick() }
@@ -237,7 +263,6 @@ private fun ReviewHeader(
             )
         }
 
-        // Rating + comentario + like SOLO si no es minimal
         if (!review.isMinimal) {
             Spacer(Modifier.height(12.dp))
             review.rating?.let { rating ->
@@ -271,7 +296,6 @@ private fun ReviewHeader(
 
             Spacer(Modifier.height(16.dp))
 
-            // Like
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onLikeClick) {
                     Icon(
