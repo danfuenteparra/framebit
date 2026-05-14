@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import com.example.framebit.ui.navigation.AppNavigation
 import com.example.framebit.ui.theme.MovieBoxTheme
 import dagger.hilt.android.AndroidEntryPoint
+import com.example.framebit.auth.AuthManager
+import javax.inject.Inject
 
 /**
  * Activity principal de MovieBox
@@ -14,12 +16,14 @@ import dagger.hilt.android.AndroidEntryPoint
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject lateinit var authManager: AuthManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             MovieBoxTheme {
-                AppNavigation()
+                AppNavigation(authManager = authManager)
             }
         }
     }

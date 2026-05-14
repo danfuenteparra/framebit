@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,7 +44,6 @@ import com.example.framebit.ui.screens.userprofile.UserProfileScreen
 import com.example.framebit.ui.screens.inbox.InboxScreen
 import com.example.framebit.ui.screens.newchat.NewChatScreen
 import com.example.framebit.ui.screens.chat.ChatScreen
-
 import com.example.framebit.ui.screens.userprofile.sections.UserWatchedScreen
 import com.example.framebit.ui.screens.userprofile.sections.UserReviewsScreen
 import com.example.framebit.ui.screens.userprofile.sections.UserWatchlistScreen
@@ -52,7 +52,8 @@ import com.example.framebit.ui.screens.userprofile.sections.buildReviewId
 import com.example.framebit.ui.screens.usersearch.UserSearchScreen
 import com.example.framebit.ui.screens.watchlist.WatchlistScreen
 import com.example.framebit.ui.screens.reviewdetail.ReviewDetailScreen
-
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.framebit.ui.screens.profile.ProfileViewModel
 import com.example.framebit.ui.theme.MovieBoxBackground
 import com.example.framebit.ui.theme.MovieBoxOnBackground
 import com.example.framebit.ui.theme.MovieBoxPrimary
@@ -74,6 +75,7 @@ val bottomNavScreens = listOf(
 
 @Composable
 fun AppNavigation(
+    authManager: com.example.framebit.auth.AuthManager,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController()
 ) {
@@ -82,6 +84,10 @@ fun AppNavigation(
 
     val showBottomBar = currentRoute in bottomNavScreens
 
+    // Si hay sesión persistida, arrancar directo en Home; si no, en Login.
+    val startDestination = remember {
+        if (authManager.isAuthenticated()) Screen.Home.route else Screen.Login.route
+    }
     // Helper local: navegar al detalle de una reseña por reviewId
     val navigateToReview: (String) -> Unit = { reviewId ->
         navController.navigate(Screen.ReviewDetail.createRoute(reviewId))
@@ -97,7 +103,7 @@ fun AppNavigation(
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Login.route,
+            startDestination = startDestination,
             modifier = modifier.padding(innerPadding)
         ) {
             composable(route = Screen.Login.route) {

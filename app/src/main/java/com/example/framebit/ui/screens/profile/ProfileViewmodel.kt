@@ -108,12 +108,13 @@ class ProfileViewModel @Inject constructor(
     private fun loadUserProfile() {
         viewModelScope.launch {
             try {
-                if (authManager.isEmailSession()) {
-                    val userId = authManager.getCachedUserId().orEmpty()
-                    if (userId.isBlank()) {
-                        _uiState.value = ProfileUiState.Error("No hay sesión activa")
-                        return@launch
-                    }
+                // Estrategia unificada: si AuthManager tiene userId cacheado
+                // (porque hubo login previo y SharedPreferences lo guardó),
+                // lo usamos sin pedir token nuevo. Funciona igual para Auth0
+                // y para email/password tras un reinicio de la app.
+                val userId = authManager.getCachedUserId().orEmpty()
+
+                if (userId.isNotBlank()) {
                     currentUserId = userId
                     _uiState.value = ProfileUiState.Success(
                         ProfileBasic(
@@ -125,7 +126,12 @@ class ProfileViewModel @Inject constructor(
                     loadTopItems()
                     observeUnread()
                     refreshAll()
-                } else {
+                    return@launch
+                }
+
+                // Fallback (solo deberá entrar aquí si no hay sesión previa):
+                // intentar Auth0 con el token actual si lo hay.
+                if (!authManager.isEmailSession()) {
                     val accessToken = authManager.getAccessToken()
                     if (accessToken != null) {
                         val profile = authManager.getUserProfile(accessToken)
@@ -140,10 +146,11 @@ class ProfileViewModel @Inject constructor(
                         loadTopItems()
                         observeUnread()
                         refreshAll()
-                    } else {
-                        _uiState.value = ProfileUiState.Error("No hay sesión activa")
+                        return@launch
                     }
                 }
+
+                _uiState.value = ProfileUiState.Error("No hay sesión activa")
             } catch (e: Exception) {
                 _uiState.value = ProfileUiState.Error(e.message ?: "Error desconocido")
             }
