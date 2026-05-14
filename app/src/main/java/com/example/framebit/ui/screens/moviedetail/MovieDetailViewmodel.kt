@@ -145,11 +145,12 @@ class MovieDetailViewModel @Inject constructor(
             // 1) Guardar en Room (offline)
             reviewRepository.insertReview(
                 ReviewEntity(
+                    userId = authManager.getCachedUserId() ?: "",
                     mediaId = movieId,
                     mediaType = "movie",
                     mediaTitle = title,
                     rating = rating,
-                    comment = comment
+                    comment = comment,
                 )
             )
 

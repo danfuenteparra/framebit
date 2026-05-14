@@ -24,4 +24,7 @@ interface ReviewDao {
 
     @Query("DELETE FROM reviews WHERE id = :reviewId")
     suspend fun deleteReviewById(reviewId: Int)
+
+    @Query("SELECT * FROM reviews WHERE userId = :userId ORDER BY createdAt DESC")
+    fun getUserReviews(userId: String): Flow<List<ReviewEntity>>
 }

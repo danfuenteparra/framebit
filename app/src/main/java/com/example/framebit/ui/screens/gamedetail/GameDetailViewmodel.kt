@@ -117,6 +117,7 @@ class GameDetailViewModel @Inject constructor(
             // 1) Guardar en Room
             reviewRepository.insertReview(
                 ReviewEntity(
+                    userId = authManager.getCachedUserId() ?: "",
                     mediaId = gameId,
                     mediaType = "game",
                     mediaTitle = title,

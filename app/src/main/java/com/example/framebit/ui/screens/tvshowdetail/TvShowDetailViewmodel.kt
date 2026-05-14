@@ -131,6 +131,7 @@ class TvShowDetailViewModel @Inject constructor(
             // 1) Guardar en Room
             reviewRepository.insertReview(
                 ReviewEntity(
+                    userId = authManager.getCachedUserId() ?: "",
                     mediaId = tvShowId,
                     mediaType = "tv",
                     mediaTitle = title,

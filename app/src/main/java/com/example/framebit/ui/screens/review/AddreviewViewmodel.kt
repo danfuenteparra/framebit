@@ -151,6 +151,7 @@ class AddReviewViewModel @Inject constructor(
             // Guardar en Room
             reviewRepository.insertReview(
                 ReviewEntity(
+                    userId = authManager.getCachedUserId() ?: "",
                     mediaId = sel.id,
                     mediaType = mediaTypeStr,
                     mediaTitle = sel.title,
