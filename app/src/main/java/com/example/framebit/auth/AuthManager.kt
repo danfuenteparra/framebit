@@ -1,6 +1,7 @@
 package com.example.framebit.auth
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.auth0.android.Auth0
 import com.auth0.android.authentication.AuthenticationAPIClient
 import com.auth0.android.authentication.AuthenticationException
@@ -23,14 +24,17 @@ import kotlin.coroutines.resumeWithException
  *  - Auth0 (Google etc.)  → userId = "auth0|..." / "google-oauth2|..."
  *  - Firebase email/password → userId = "firebase|<uid>"
  *
- * Internamente, ambas dejan una sesión Firebase Auth activa para que las reglas
- * de Firestore pasen. La diferencia es que con email/password no es anónima.
+ * Persiste la sesión en SharedPreferences para que al abrir la app no haya
+ * que volver a hacer login (incluso sin conexión).
  */
 @Singleton
 class AuthManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val firebaseAuth: FirebaseAuth
 ) {
+
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences("framebit_auth", Context.MODE_PRIVATE)
 
     private val account: Auth0 by lazy {
         Auth0(
@@ -45,14 +49,39 @@ class AuthManager @Inject constructor(
 
     private var currentCredentials: Credentials? = null
 
-    // Cache del perfil del usuario actual (sirve para Auth0 y para email/password).
+    // Cache en memoria (se rellena desde SharedPreferences al arrancar)
     private var cachedUserId: String? = null
     private var cachedName: String? = null
     private var cachedEmail: String? = null
     private var cachedPictureUrl: String? = null
-
-    /** True si el usuario entró por email/password en vez de por Auth0. */
     private var isEmailSession: Boolean = false
+
+    init {
+        // Restaurar sesión persistida al construir la clase
+        restoreSession()
+    }
+
+    private fun restoreSession() {
+        cachedUserId = prefs.getString(KEY_USER_ID, null)
+        cachedName = prefs.getString(KEY_NAME, null)
+        cachedEmail = prefs.getString(KEY_EMAIL, null)
+        cachedPictureUrl = prefs.getString(KEY_PICTURE, null)
+        isEmailSession = prefs.getBoolean(KEY_IS_EMAIL, false)
+    }
+
+    private fun persistSession() {
+        prefs.edit()
+            .putString(KEY_USER_ID, cachedUserId)
+            .putString(KEY_NAME, cachedName)
+            .putString(KEY_EMAIL, cachedEmail)
+            .putString(KEY_PICTURE, cachedPictureUrl)
+            .putBoolean(KEY_IS_EMAIL, isEmailSession)
+            .apply()
+    }
+
+    private fun clearPersistedSession() {
+        prefs.edit().clear().apply()
+    }
 
     // ===================== AUTH0 =====================
 
@@ -67,7 +96,6 @@ class AuthManager @Inject constructor(
                     isEmailSession = false
                     continuation.resume(result)
                 }
-
                 override fun onFailure(error: AuthenticationException) {
                     continuation.resumeWithException(error)
                 }
@@ -75,7 +103,6 @@ class AuthManager @Inject constructor(
     }
 
     suspend fun logout(activityContext: Context) {
-        // Si la sesión es de email/password, no hay flujo web de Auth0 que cerrar.
         if (isEmailSession) {
             firebaseAuth.signOut()
             clearCache()
@@ -91,7 +118,6 @@ class AuthManager @Inject constructor(
                         clearCache()
                         continuation.resume(Unit)
                     }
-
                     override fun onFailure(error: AuthenticationException) {
                         continuation.resumeWithException(error)
                     }
@@ -109,40 +135,35 @@ class AuthManager @Inject constructor(
                         cachedName = result.name ?: result.nickname
                         cachedEmail = result.email
                         cachedPictureUrl = result.pictureURL
+                        persistSession()  // <-- guardar tras login Auth0
                         continuation.resume(result)
                     }
-
                     override fun onFailure(error: AuthenticationException) {
                         continuation.resumeWithException(error)
                     }
                 })
         }
 
-    fun isAuthenticated(): Boolean = currentCredentials != null || isEmailSession
+    fun isAuthenticated(): Boolean =
+        currentCredentials != null || isEmailSession || !cachedUserId.isNullOrBlank()
 
     fun getAccessToken(): String? = currentCredentials?.accessToken
     fun getCredentials(): Credentials? = currentCredentials
 
     // ===================== FIREBASE EMAIL / PASSWORD =====================
 
-    /**
-     * Login con email y contraseña usando Firebase Auth.
-     * Tras autenticarse, rellena el cache con uid/nombre/email.
-     */
     suspend fun loginWithEmail(email: String, password: String) {
         val result = firebaseAuth.signInWithEmailAndPassword(email.trim(), password).await()
         val user = result.user ?: throw IllegalStateException("No se obtuvo usuario tras login")
         cachedUserId = "firebase|${user.uid}"
-        cachedName = user.displayName?.ifBlank { user.email?.substringBefore("@") } ?: user.email?.substringBefore("@") ?: "Usuario"
+        cachedName = user.displayName?.ifBlank { user.email?.substringBefore("@") }
+            ?: user.email?.substringBefore("@") ?: "Usuario"
         cachedEmail = user.email
         cachedPictureUrl = user.photoUrl?.toString()
         isEmailSession = true
+        persistSession()
     }
 
-    /**
-     * Registra un usuario nuevo con email/password.
-     * Si [displayName] no es vacío, lo asigna como displayName del perfil de Firebase.
-     */
     suspend fun registerWithEmail(email: String, password: String, displayName: String) {
         val result = firebaseAuth.createUserWithEmailAndPassword(email.trim(), password).await()
         val user = result.user ?: throw IllegalStateException("No se obtuvo usuario tras registro")
@@ -155,6 +176,7 @@ class AuthManager @Inject constructor(
         cachedEmail = user.email
         cachedPictureUrl = null
         isEmailSession = true
+        persistSession()
     }
 
     private fun clearCache() {
@@ -164,6 +186,7 @@ class AuthManager @Inject constructor(
         cachedEmail = null
         cachedPictureUrl = null
         isEmailSession = false
+        clearPersistedSession()
     }
 
     // ===== Accesos rápidos al perfil cacheado =====
@@ -174,4 +197,12 @@ class AuthManager @Inject constructor(
     fun getCachedPictureUrl(): String? = cachedPictureUrl
 
     fun isEmailSession(): Boolean = isEmailSession
+
+    companion object {
+        private const val KEY_USER_ID = "user_id"
+        private const val KEY_NAME = "name"
+        private const val KEY_EMAIL = "email"
+        private const val KEY_PICTURE = "picture"
+        private const val KEY_IS_EMAIL = "is_email_session"
+    }
 }
